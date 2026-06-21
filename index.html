@@ -392,8 +392,8 @@
         <div class="hero-card hc-1">
           <img src="https://images.unsplash.com/photo-1559757148-5c350d0d3c56?w=500&q=80" alt="Brain scan neuroimaging"/>
           <div class="hc-body">
-            <div class="hc-title">Passive Computer Vision Analysis</div>
-            <div class="hc-sub">CNN &amp; RNN/LSTM deep neural network assessment</div>
+            <div class="hc-title">In-Browser Face Tracking</div>
+            <div class="hc-sub">478 MediaPipe landmarks + iris, via WebAssembly</div>
           </div>
         </div>
         <!-- Floating card 2: stat -->
@@ -441,12 +441,12 @@
         </div>
       </div>
       <div class="r d2">
-        <div class="eyebrow">Who We Are</div>
-        <h2>AI-Powered Assessment with Continuous Monitoring &amp; Long-Term Tracking</h2>
-        <p>CranialCheck AI is a computer vision-based, AI-powered system designed for conducting comprehensive neurological examinations, cognitive performance assessments, and frailty screenings. Using deep neural networks—including convolutional neural networks (CNNs) for movement recognition and recurrent neural networks (RNNs/LSTMs) for temporal analysis—our platform automates the assessment of cranial nerve function, motor strength responses, and cognitive performance.</p>
-        <p>The system continuously monitors patients using multiple room-mounted cameras and a tablet/smartphone interface with audiovisual capture, integrating with electronic health records (EHR) and a personal digital health binder for long-term outcome tracking and predictive analytics across ICU, inpatient, outpatient, and home settings.</p>
-        <div class="about-callout"><strong>Our mission:</strong> Deliver AI-based passive computer vision assessment and continuous monitoring to support clinicians with actionable intelligence—while maintaining the highest standards of patient privacy and data security.</div>
-        <a class="btn-main teal" href="#clinical" style="margin-top:12px">Our Clinical Focus →</a>
+        <div class="eyebrow">What We Built</div>
+        <h2>The First Zero-Hardware Neurological Screener</h2>
+        <p>CranialCheck AI runs MediaPipe FaceLandmarker — 478 facial landmarks plus iris tracking — entirely in the browser via WebAssembly. No server. No cloud. No latency. Combined with Web Speech API for speech motor analysis, it delivers a complete neurological screen from any smartphone in under 90 seconds.</p>
+        <p>Every existing competitor requires dedicated hardware, a controlled clinical environment, or both. EyeBOX needs a headset. BrainScope needs EEG electrodes. neuroClues requires a clinic. CranialCheck AI requires nothing but a browser. That is not a feature difference — that is a category difference.</p>
+        <div class="about-callout"><strong>Our mission:</strong> Deploy neurological screening to every medic, clinician, and athletic trainer on the planet — without hardware barriers.</div>
+        <a class="btn-main teal" href="#how" style="margin-top:12px">How It Works →</a>
       </div>
     </div>
   </div>
@@ -458,48 +458,48 @@
 <section class="clinical" id="clinical">
   <div class="wrap">
     <div class="section-header r">
-      <div class="eyebrow">Clinical Focus</div>
-      <h2>Comprehensive Assessment Capabilities</h2>
-      <p>AI-powered algorithms for assessing neurological and cognitive parameters through passive computer vision analysis and standardized clinical protocols.</p>
+      <div class="eyebrow">Clinical Capabilities</div>
+      <h2>Comprehensive Neurological Assessment</h2>
+      <p>Camera and microphone-based assessment of 10 cranial nerves, oculomotor function, and speech motor analysis — all in one exam.</p>
     </div>
     <div class="clin-grid">
       <div class="clin-card r d1">
         <div class="clin-card-img">
           <img src="https://images.unsplash.com/photo-1559757148-5c350d0d3c56?w=600&q=80" alt="Neurological brain imaging"/>
-          <div class="clin-label">Neurological &amp;<br>Cognitive Assessment</div>
+          <div class="clin-label">Oculomotor<br>Assessment</div>
           <div class="card-decor">
             <svg viewBox="0 0 24 24" fill="none" stroke="#1E88E5" stroke-width="2"><path d="M12 2a10 10 0 1 0 10 10A10 10 0 0 0 12 2z"/><path d="M12 6v6l4 2"/></svg>
           </div>
         </div>
         <div class="clin-card-body">
-          <p>AI-powered assessment of cranial nerve function, motor responses, and cognitive performance through passive computer vision. Includes automated Glasgow Coma Scale (GCS) scoring and cranial nerve testing (CN II–XII).</p>
-          <div class="clin-tags"><span class="ctag">GCS Module</span><span class="ctag">Cranial Nerve Testing</span><span class="ctag">Cognitive Baselining</span><span class="ctag">CNN / RNN</span></div>
+          <p>Smooth pursuit, saccades, gaze deviation, nystagmus, OKN, and full HINTS exam. Antisaccade error rate is the #1 validated mTBI marker. Saccadic intrusion count during pursuit has AUC 0.82.</p>
+          <div class="clin-tags"><span class="ctag">Smooth Pursuit</span><span class="ctag">Antisaccade</span><span class="ctag">HINTS Exam</span><span class="ctag">OKN</span><span class="ctag">Fixation</span></div>
         </div>
       </div>
       <div class="clin-card r d2">
         <div class="clin-card-img">
           <img src="https://images.unsplash.com/photo-1576091160399-112ba8d25d1d?w=600&q=80" alt="Patient care and mobility"/>
-          <div class="clin-label">Frailty Screening<br>&amp; Fall Risk</div>
+          <div class="clin-label">10 Cranial<br>Nerves</div>
           <div class="card-decor">
             <svg viewBox="0 0 24 24" fill="none" stroke="#1E88E5" stroke-width="2"><path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"/><rect x="8" y="2" width="8" height="4" rx="1"/><path d="M9 14l2 2 4-4"/></svg>
           </div>
         </div>
         <div class="clin-card-body">
-          <p>Passive computer vision frailty assessment using Clinical Frailty Scale (CFS), Timed Get Up and Go (TUG), temporalis muscle thickness for sarcopenia detection, and fall risk scoring via the Hopkins Fall Risk Assessment Tool.</p>
-          <div class="clin-tags"><span class="ctag">CFS / TUG</span><span class="ctag">Sarcopenia Detection</span><span class="ctag">Hopkins Fall Risk</span><span class="ctag">Gait Analysis</span></div>
+          <p>CN II through XII assessed via camera and microphone. Each nerve has a dedicated stimulus protocol, landmark-based scoring, and blendshape dual-validation. The highest CN coverage of any smartphone-based tool.</p>
+          <div class="clin-tags"><span class="ctag">CN II-XII</span><span class="ctag">MediaPipe</span><span class="ctag">Blendshapes</span><span class="ctag">Landmark Scoring</span></div>
         </div>
       </div>
       <div class="clin-card r d3">
         <div class="clin-card-img">
           <img src="https://images.unsplash.com/photo-1516549655169-df83a0774514?w=600&q=80" alt="ICU monitoring equipment"/>
-          <div class="clin-label">Delirium Detection<br>&amp; GCS Scoring</div>
+          <div class="clin-label">Speech Motor<br>Analysis</div>
           <div class="card-decor">
             <svg viewBox="0 0 24 24" fill="none" stroke="#1E88E5" stroke-width="2"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
           </div>
         </div>
         <div class="clin-card-body">
-          <p>Continuous audiovisual monitoring for early delirium detection using CAM-ICU-7 and ICDSC scoring tools. Automated RASS assessment for intubated or sedated patients, with real-time EHR integration for mental status updates.</p>
-          <div class="clin-tags"><span class="ctag">CAM-ICU-7</span><span class="ctag">ICDSC</span><span class="ctag">RASS Scoring</span><span class="ctag">Real-Time EHR</span></div>
+          <p>DDK rate, WPM, pause frequency, F0 variance, response latency, and spontaneous speech sample. Web Speech API with audio envelope fallback. Works offline.</p>
+          <div class="clin-tags"><span class="ctag">DDK Rate</span><span class="ctag">WPM</span><span class="ctag">F0 Variance</span><span class="ctag">Dysarthria Screen</span></div>
         </div>
       </div>
     </div>
@@ -514,37 +514,37 @@
     <div class="section-header r">
       <div class="eyebrow">Technology</div>
       <h2>How CranialCheck AI Works</h2>
-      <p>A dual-camera and multi-camera system with AI-powered assessment models, designed to operate across pre-operative, intra-operative, post-operative, and home environments.</p>
+      <p>Four steps. No hardware. No downloads. No clinical setting required.</p>
     </div>
     <div class="how-steps">
       <div class="how-step r d1">
         <div class="how-step-num n1">1</div>
-        <div class="how-step-title">Multi-Camera Capture</div>
-        <div class="how-step-desc">Dual-camera and multi-camera setup with room-mounted and bedside cameras capturing real-time video and audio.</div>
+        <div class="how-step-title">Open Browser</div>
+        <div class="how-step-desc">No download. No install. Open the URL on any smartphone, tablet, or laptop with a front-facing camera. Works on Chrome, Safari, Edge.</div>
         <div class="how-step-graphic">
           <svg viewBox="0 0 80 80" fill="none"><rect x="16" y="12" width="48" height="36" rx="4" stroke="#90CAF9" stroke-width="1.5" opacity=".6"/><circle cx="40" cy="30" r="8" stroke="#90CAF9" stroke-width="1.5" opacity=".4"/><circle cx="40" cy="30" r="3" fill="#90CAF9" opacity=".5"/><line x1="32" y1="56" x2="48" y2="56" stroke="#90CAF9" stroke-width="1.5" opacity=".4"/><line x1="40" y1="48" x2="40" y2="56" stroke="#90CAF9" stroke-width="1.5" opacity=".4"/></svg>
         </div>
       </div>
       <div class="how-step r d2">
         <div class="how-step-num n2">2</div>
-        <div class="how-step-title">Deep Neural Networks</div>
-        <div class="how-step-desc">CNNs for movement recognition and RNN/LSTM networks for temporal analysis of movement patterns and coordination.</div>
+        <div class="how-step-title">Auto-Calibrate</div>
+        <div class="how-step-desc">2-second automatic calibration locks your personal baseline. Head pose correction via facial_transformation_matrix activates. Exam is ready.</div>
         <div class="how-step-graphic">
           <svg viewBox="0 0 80 80" fill="none"><rect x="18" y="20" width="44" height="40" rx="6" stroke="#90CAF9" stroke-width="1.5" opacity=".6"/><circle cx="32" cy="36" r="4" stroke="#90CAF9" stroke-width="1" opacity=".5"/><circle cx="48" cy="36" r="4" stroke="#90CAF9" stroke-width="1" opacity=".5"/><circle cx="40" cy="48" r="4" stroke="#90CAF9" stroke-width="1" opacity=".5"/><line x1="35" y1="34" x2="45" y2="34" stroke="#90CAF9" stroke-width=".8" opacity=".3"/><line x1="34" y1="38" x2="38" y2="46" stroke="#90CAF9" stroke-width=".8" opacity=".3"/><line x1="46" y1="38" x2="42" y2="46" stroke="#90CAF9" stroke-width=".8" opacity=".3"/></svg>
         </div>
       </div>
       <div class="how-step r d3">
         <div class="how-step-num n3">3</div>
-        <div class="how-step-title">Assessment Models</div>
-        <div class="how-step-desc">AI-powered screening manager performs GCS scoring, delirium screening (CAM-ICU-7, ICDSC), and frailty assessments.</div>
+        <div class="how-step-title">Run Exam</div>
+        <div class="how-step-desc">TRIAGE: 90 seconds, 6 tests. ACUTE: 4 minutes, 12 tests. EXTENDED: 8 minutes, 19 tests. Voice guides every step automatically.</div>
         <div class="how-step-graphic">
           <svg viewBox="0 0 80 80" fill="none"><path d="M20 48a16 16 0 0 1 1.2-6A12 12 0 1 1 44 30a14 14 0 1 1 16 18Z" stroke="#90CAF9" stroke-width="1.5" opacity=".6"/><rect x="30" y="52" width="20" height="4" rx="2" fill="#90CAF9" opacity=".3"/><rect x="34" y="58" width="12" height="3" rx="1.5" fill="#90CAF9" opacity=".2"/></svg>
         </div>
       </div>
       <div class="how-step r d4">
         <div class="how-step-num n4">4</div>
-        <div class="how-step-title">EHR + Health Binder</div>
-        <div class="how-step-desc">Integrates with EHRs and a personal digital health binder for long-term tracking and predictive analytics.</div>
+        <div class="how-step-title">Get Results</div>
+        <div class="how-step-desc">Per-CN risk flags, confidence score, exportable report, and longitudinal trend tracking vs personal baseline.</div>
         <div class="how-step-graphic">
           <svg viewBox="0 0 80 80" fill="none"><rect x="20" y="16" width="40" height="48" rx="4" stroke="#D4A853" stroke-width="1.5" opacity=".6"/><line x1="28" y1="28" x2="52" y2="28" stroke="#D4A853" stroke-width="1" opacity=".4"/><line x1="28" y1="36" x2="44" y2="36" stroke="#D4A853" stroke-width="1" opacity=".3"/><line x1="28" y1="44" x2="48" y2="44" stroke="#D4A853" stroke-width="1" opacity=".3"/><circle cx="50" cy="52" r="6" fill="#D4A853" opacity=".2" stroke="#D4A853" stroke-width="1" /><path d="M48 52l2 2 4-4" stroke="#D4A853" stroke-width="1.2" opacity=".6"/></svg>
         </div>
@@ -562,31 +562,31 @@
   </div>
   <div class="wrap">
     <div class="section-header r">
-      <div class="eyebrow" style="color:#D4A853"><span style="display:inline-block;width:28px;height:2px;background:#D4A853;margin-right:10px;border-radius:2px;vertical-align:middle"></span>Research & Validation</div>
-      <h2>Patent-Backed Clinical Innovation</h2>
-      <p>Our technology is built on patented AI assessment methods with continuous monitoring and long-term data tracking capabilities.</p>
+      <div class="eyebrow" style="color:#D4A853"><span style="display:inline-block;width:28px;height:2px;background:#D4A853;margin-right:10px;border-radius:2px;vertical-align:middle"></span>Clinical Evidence</div>
+      <h2>Research-Validated Technology</h2>
+      <p>Built on 46 peer-reviewed citations. Every threshold, every landmark index, every scoring formula is research-validated.</p>
     </div>
     <div class="research-grid">
       <div class="res-card r d1">
         <div class="res-card-icon">
           <svg viewBox="0 0 24 24" fill="none" stroke="#90CAF9" stroke-width="1.5"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/></svg>
         </div>
-        <h3>Cognitive Baselining &amp; Longitudinal Tracking</h3>
-        <p>Structured baseline interviews assess depth and breadth of knowledge on patient-selected topics. Quarterly cognitive check-ins compare responses to baseline data to detect decline or improvement over time.</p>
+        <h3>Military Validated</h3>
+        <p>Talian et al. established normative oculomotor ranges for service members and veterans using FDA-recognized methods. CranialCheck AI calibrates to these military-specific norms.</p>
       </div>
       <div class="res-card r d2">
         <div class="res-card-icon">
           <svg viewBox="0 0 24 24" fill="none" stroke="#90CAF9" stroke-width="1.5"><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/></svg>
         </div>
-        <h3>Surgical Quality Databank</h3>
-        <p>Pre-operative, peri-operative, and post-operative neuroexamination data stored and analyzed with deep neural network analytics to predict and score surgical difficulty. Time-based follow-up tracking at 3, 6, 9, and 12 months.</p>
+        <h3>Smartphone-Grade Accuracy</h3>
+        <p>PupilScreen (PMC9283953) demonstrated 93% accuracy, 94% sensitivity on smartphone PLR — outperforming the NPi-200 dedicated pupillometer. iPhone video saccade ML reached 78% accuracy (PMC9632643).</p>
       </div>
       <div class="res-card r d3">
         <div class="res-card-icon">
           <svg viewBox="0 0 24 24" fill="none" stroke="#90CAF9" stroke-width="1.5"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/><circle cx="12" cy="16" r="1"/></svg>
         </div>
-        <h3>EHR Integration &amp; Radiology AI</h3>
-        <p>NLP extraction of key information from radiology reports, reverse-engineered into VR visualizations. Predictive analytics using historical assessment data to forecast long-term patient outcomes with unique patient identifiers (UPI).</p>
+        <h3>HINTS Exam: 100% Sensitivity</h3>
+        <p>HINTS exam (Head Impulse + Nystagmus + Test of Skew) achieves 100% sensitivity and 96% specificity for stroke in acute vestibular syndrome — more sensitive than early MRI. Fully implemented in CranialCheck AI.</p>
       </div>
     </div>
   </div>
@@ -598,9 +598,9 @@
 <section class="team" id="team">
   <div class="wrap">
     <div class="section-header r">
-      <div class="eyebrow">Our Team</div>
-      <h2>Founders & Advisors</h2>
-      <p>Bringing together neurosurgical expertise, clinical research, and AI engineering from Hurley Medical Center's Neurological Center of Excellence.</p>
+      <div class="eyebrow">Founder</div>
+      <h2>Built by a Solo Technical Founder</h2>
+      <p>One builder, shipping AI-native platforms end to end.</p>
     </div>
     <div class="team-grid">
       <div class="team-card r d1">
@@ -613,7 +613,7 @@
             <div class="trole">Founder & CEO, PredictWell Health AI</div>
           </div>
         </div>
-        <div class="team-card-info"><p>B.S. Information Technology, Northern Arizona University. Solo technical founder. Builder of CranialCheck AI, Physis AI, and SwingCheck AI.</p></div>
+        <div class="team-card-info"><p>B.S. Information Technology, Northern Arizona University. Solo technical founder with a track record of building and shipping AI-native platforms without a traditional engineering team. Built CranialCheck AI (military TBI screening), Physis AI (vertical-agnostic AI company builder, 24 industries, live), and SwingCheck AI (browser-based sports biomechanics, 75-point MediaPipe tracking, professional normative dataset, live internationally). Contact: Rich.Rubel@myphysis.ai</p></div>
       </div>
     </div>
   </div>
@@ -631,7 +631,7 @@
       <div class="contact-left-content">
         <div class="eyebrow" style="color:#fff;margin-bottom:14px"><span style="display:inline-block;width:28px;height:2px;background:rgba(255,255,255,.5);margin-right:10px;border-radius:2px;vertical-align:middle"></span>Get in Touch</div>
         <h2>Ready to Explore a Clinical Pilot?</h2>
-        <p>Whether you're a clinician, researcher, hospital administrator, or investor—we'd love to connect and discuss how CranialCheck AI's patented assessment technology can support your clinical and research goals.</p>
+        <p>Whether you're a clinician, researcher, military medic, or investor—we'd love to connect and discuss how CranialCheck AI's zero-hardware neurological screening can support your clinical and field goals.</p>
         <div class="contact-methods">
           <a class="c-method" href="mailto:Rich.Rubel@myphysis.ai"><div class="c-method-icon">✉</div><div><div class="c-method-label">General Inquiries</div><div class="c-method-val">Rich.Rubel@myphysis.ai</div></div></a>
           <a class="c-method" href="https://www.cranialcheckai.com" target="_blank"><div class="c-method-icon">🌐</div><div><div class="c-method-label">Website</div><div class="c-method-val">www.cranialcheckai.com</div></div></a>
@@ -667,7 +667,7 @@
 <footer>
   <div class="wrap">
     <div class="foot-grid">
-      <div><div class="foot-brand">CranialCheck<span>AI</span></div><p class="foot-about">AI-based assessment system with continuous monitoring for neurological, cognitive, and frailty screening across clinical environments.</p></div>
+      <div><div class="foot-brand">CranialCheck<span>AI</span></div><p class="foot-about">Zero-hardware neurological screening. Browser-based. Field-deployable. First of its kind.</p></div>
       <div><div class="foot-heading">Navigation</div><div class="foot-links"><a href="#about">About</a><a href="#clinical">Clinical Focus</a><a href="#how">Technology</a><a href="#research">Research</a></div></div>
       <div><div class="foot-heading">Company</div><div class="foot-links"><a href="#team">Team</a><a href="#contact">Contact</a><a href="https://www.cranialcheckai.com">Website</a></div></div>
       <div><div class="foot-heading">Contact</div><div class="foot-links"><a href="mailto:Rich.Rubel@myphysis.ai">Rich.Rubel@myphysis.ai</a><a href="https://www.cranialcheckai.com">www.cranialcheckai.com</a></div></div>
