@@ -88,6 +88,8 @@ tr:last-child td{border-bottom:none}
 .dom-good{color:var(--green);font-weight:600}
 .dom-warn{color:var(--amber);font-weight:600}
 .dom-bad{color:var(--bad);font-weight:600}
+.raw{display:block;color:var(--tx3);font-family:var(--m);font-size:10.5px;font-weight:400;margin-top:2px}
+.detail-row td{font-family:var(--m);font-size:11px;color:var(--tx2);padding:7px 12px;border-bottom:2px solid var(--border)}
 
 .pager{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:6px 2px 22px}
 .pager-info{font-size:13px;color:var(--tx2);font-family:var(--m)}
@@ -306,21 +308,30 @@ function renderDashboard(){
     +'<th>#</th><th>Date &amp; Time</th><th>Mode</th><th>Result</th><th>Confidence</th>'
     +'<th>Alertness</th><th>Facial Motor</th><th>GCS</th><th>Tongue</th><th>Head</th><th>Device</th>'
     +'</tr></thead><tbody>';
+  var rv=function(v,dec){return (v==null||isNaN(v))?'—':Number(v).toFixed(dec);};
+  var ri=function(v){return (v==null||isNaN(v))?'—':Math.round(v);};
+  var raw=function(s){return '<span class="raw">'+s+'</span>';};
   slice.forEach(function(r,i){
     var m=smeta(r.overall_result);
+    var headRaw='yaw σ '+rv(r.head_yaw_sd,1)+'° · pitch σ '+rv(r.head_pitch_sd,1)+'° · roll σ '+rv(r.head_roll_sd,1)+'°';
     h+='<tr style="background:'+m.tint+'">'
       +'<td class="mono">'+(start+i+1)+'</td>'
       +'<td>'+fmtDate(r.created_at)+'</td>'
       +'<td>'+esc(r.exam_mode||'—')+'</td>'
       +'<td><span class="badge" style="background:'+m.badge+';color:'+m.hex+'">'+esc(r.overall_result||'—')+'</span></td>'
       +'<td class="mono">'+(r.confidence!=null?r.confidence+'%':'—')+'</td>'
-      +'<td class="'+flagClass(r.perclos_flag)+'">'+esc(r.perclos_label||'—')+'</td>'
-      +'<td class="'+flagClass(r.cn7_flag)+'">'+esc(r.cn7_label||'—')+'</td>'
-      +'<td class="'+flagClass(r.gcs_flag)+'">'+esc(r.gcs_label||'—')+'</td>'
-      +'<td class="'+flagClass(r.tongue_flag)+'">'+esc(r.tongue_label||'—')+'</td>'
-      +'<td class="'+flagClass(r.head_flag)+'">'+esc(r.head_label||'—')+'</td>'
+      +'<td class="'+flagClass(r.perclos_flag)+'">'+esc(r.perclos_label||'—')+raw('(PERCLOS: '+ri(r.perclos_value)+'%)')+'</td>'
+      +'<td class="'+flagClass(r.cn7_flag)+'">'+esc(r.cn7_label||'—')+raw('(asym: '+rv(r.cn7_value,3)+')')+'</td>'
+      +'<td class="'+flagClass(r.gcs_flag)+'">'+esc(r.gcs_label||'—')+raw('(E: '+ri(r.gcs_e)+')')+'</td>'
+      +'<td class="'+flagClass(r.tongue_flag)+'">'+esc(r.tongue_label||'—')+raw('(aperture: '+rv(r.tongue_value,2)+')')+'</td>'
+      +'<td class="'+flagClass(r.head_flag)+'">'+esc(r.head_label||'—')+raw('('+headRaw+')')+'</td>'
       +'<td>'+esc(browserName(r.device_info))+'</td>'
       +'</tr>';
+    h+='<tr class="detail-row" style="background:'+m.tint+'"><td colspan="11">'
+      +'Valid frames: '+ri(r.valid_frame_pct)+'% &nbsp;|&nbsp; Lighting: '+ri(r.lighting_score)+'% &nbsp;|&nbsp; '
+      +'Calibration: '+ri(r.calibration_stability)+'% &nbsp;|&nbsp; Completion: '+ri(r.completion_rate)+'% &nbsp;|&nbsp; '
+      +'Duration: '+rv(r.exam_duration_sec,1)+'s &nbsp;|&nbsp; FPS: '+ri(r.avg_fps)
+      +'</td></tr>';
   });
   h+='</tbody></table></div></div>';
 
@@ -345,13 +356,20 @@ function gotoPage(p){page=p;renderDashboard();window.scrollTo({top:0,behavior:'s
 // ── EXPORT CSV ──
 function exportCSV(){
   if(!ROWS.length)return;
-  var cols=['created_at','exam_mode','overall_result','confidence',
-    'perclos_label','perclos_metric','perclos_flag',
-    'cn7_label','cn7_metric','cn7_flag',
-    'gcs_label','gcs_metric','gcs_flag',
-    'tongue_label','tongue_metric','tongue_flag',
-    'head_label','head_metric','head_flag',
+  // Full dump: every column present on any record, in a stable preferred order,
+  // with any unexpected columns appended so nothing is ever omitted.
+  var preferred=['id','created_at','exam_mode','overall_result','confidence',
+    'perclos_label','perclos_metric','perclos_flag','perclos_value',
+    'cn7_label','cn7_metric','cn7_flag','cn7_value',
+    'gcs_label','gcs_metric','gcs_flag','gcs_e',
+    'tongue_label','tongue_metric','tongue_flag','tongue_value',
+    'head_label','head_metric','head_flag','head_yaw_sd','head_pitch_sd','head_roll_sd',
+    'valid_frame_pct','lighting_score','calibration_stability','completion_rate',
+    'exam_duration_sec','avg_fps','subject_age','subject_sex','subject_id',
     'device_info','session_id'];
+  var seen={}, cols=[];
+  preferred.forEach(function(c){ if(!seen[c] && ROWS.some(function(r){return c in r;})){seen[c]=1;cols.push(c);} });
+  ROWS.forEach(function(r){ Object.keys(r).forEach(function(k){ if(!seen[k]){seen[k]=1;cols.push(k);} }); });
   function cell(v){
     var s=String(v==null?'':v);
     if(/[",\n]/.test(s))s='"'+s.replace(/"/g,'""')+'"';

@@ -440,7 +440,8 @@ var BASE={
 
 // ── TRIAGE MODE STATE (6-step screen) ──
 var TRIAGE={active:false, capturing:false, frames:[], baseEAR:null, baseYaw:null, baseAsym:null, baseMouth:null, result:null,
-            calibStability:0, lightingScore:0, capturedFrames:0, expectedFrames:0, stepsComplete:0};
+            calibStability:0, lightingScore:0, capturedFrames:0, expectedFrames:0, stepsComplete:0,
+            startMs:0, renderFrames:0};
 var BLEND={};                                   // latest face blendshape scores
 var POSE={yaw:0,pitch:0,roll:0};                // latest head pose (degrees)
 var TRIAGE_STEPS=[
@@ -1152,6 +1153,7 @@ function startRenderLoop(){
 
     // FPS
     frameCount++;
+    if(TRIAGE.active)TRIAGE.renderFrames++;   // accumulate frames for avg FPS during the exam
     var now=Date.now();
     if(now-lastFpsTime>=1000){fps=frameCount;frameCount=0;lastFpsTime=now;}
     document.getElementById('camInfoText').textContent=
@@ -1601,7 +1603,8 @@ function resetExam(){
   BUF={iris:[],mouth:[],smile:[],jaw:[],flow:[],headPose:[],maxLen:90};
   BASE={irisX:null,irisY:null,jawW:null,mouthSpread:null,headYaw:null,gazeH:null,gazeV:null};
   ATT={active:false,dotX:0.5,dotY:0.5,dotT:0,dotDur:10000,frames:[],blinkCount:0,lastEAR:1,blinkInProgress:false,result:null};
-  TRIAGE={active:false,capturing:false,frames:[],baseEAR:null,baseYaw:null,baseAsym:null,baseMouth:null,result:null};
+  TRIAGE={active:false,capturing:false,frames:[],baseEAR:null,baseYaw:null,baseAsym:null,baseMouth:null,result:null,
+          calibStability:0,lightingScore:0,capturedFrames:0,expectedFrames:0,stepsComplete:0,startMs:0,renderFrames:0};
   GAZE_SMOOTH={h:[],v:[],len:3};
   if(attDotEl)attDotEl.style.display='none';
   hideResults();
@@ -1901,7 +1904,7 @@ function scorePerclos(frames){
   var pct=Math.round(perclos*100);
   var flag=perclos<=0.15?'good':perclos<=0.30?'warn':'bad';
   var label=perclos<=0.15?'Alert':perclos<=0.30?'Mild drowsiness':'Reduced alertness';
-  return{score:clamp(1-perclos/0.5,0,1), value:perclos, metric:pct+'% eye-closure', label:label, flag:flag};
+  return{score:clamp(1-perclos/0.5,0,1), value:pct, metric:pct+'% eye-closure', label:label, flag:flag};
 }
 // CN VII resting asymmetry normalized to IOD. Flag if > 0.07 (7%).
 function scoreCN7(frames){
@@ -1930,7 +1933,7 @@ function scoreTongue(frames){
   if(maxTongue>0.4){flag='good';label='Protrusion confirmed';score=clamp(0.70+maxTongue*0.30,0,1);}
   else if(maxMouth>=0.20){flag='warn';label='Mouth opened, tongue not detected';score=clamp(maxMouth/0.4,0,1)*0.6;}
   else{flag='bad';label='No protrusion';score=clamp(maxMouth/0.4,0,1)*0.4;}
-  return{score:score, value:maxTongue, metric:'tongueOut '+maxTongue.toFixed(2)+' · aperture '+maxMouth.toFixed(2), label:label, flag:flag};
+  return{score:score, value:maxMouth, tongueOut:maxTongue, metric:'tongueOut '+maxTongue.toFixed(2)+' · aperture '+maxMouth.toFixed(2), label:label, flag:flag};
 }
 // Head pose drift — SD of yaw/pitch/roll (degrees) over the window. Flag if any axis SD > 3°.
 function scoreHead(frames){
@@ -1941,17 +1944,25 @@ function scoreHead(frames){
   var maxSD=Math.max(yawSD,pitchSD,rollSD);
   var flag=maxSD<1.5?'good':maxSD<=3?'warn':'bad';
   var label=maxSD<1.5?'Stable':maxSD<=3?'Mild drift':'Drift flagged';
-  return{score:clamp(1-maxSD/6,0,1), value:maxSD, metric:'max SD '+maxSD.toFixed(1)+'° (y'+yawSD.toFixed(1)+'/p'+pitchSD.toFixed(1)+'/r'+rollSD.toFixed(1)+')', label:label, flag:flag};
+  return{score:clamp(1-maxSD/6,0,1), value:maxSD, yawSD:yawSD, pitchSD:pitchSD, rollSD:rollSD,
+    metric:'max SD '+maxSD.toFixed(1)+'° (y'+yawSD.toFixed(1)+'/p'+pitchSD.toFixed(1)+'/r'+rollSD.toFixed(1)+')', label:label, flag:flag};
 }
 
 // Confidence: 0.35·validFramePct + 0.20·lighting + 0.25·calibStability + 0.20·completionRate
+// Returns the rolled-up confidence plus its four sub-components, all as 0-100 numbers.
 function computeConfidence(R){
   var validFramePct=TRIAGE.expectedFrames>0?clamp(TRIAGE.capturedFrames/TRIAGE.expectedFrames,0,1):0;
   var lightingScore=clamp(TRIAGE.lightingScore,0,1);
   var calibStability=clamp(TRIAGE.calibStability,0,1);
   var completionRate=clamp(TRIAGE.stepsComplete/6,0,1);
   var conf=0.35*validFramePct + 0.20*lightingScore + 0.25*calibStability + 0.20*completionRate;
-  return Math.round(clamp(conf,0,1)*100);
+  return {
+    confidence:Math.round(clamp(conf,0,1)*100),
+    validFramePct:Math.round(validFramePct*100),
+    lightingScore:Math.round(lightingScore*100),
+    calibStability:Math.round(calibStability*100),
+    completionRate:Math.round(completionRate*100)
+  };
 }
 
 // Overall: URGENT if any red flag fires, FLAG if 2+ borderline, WATCH if 1 borderline, else NORMAL.
@@ -1964,7 +1975,12 @@ function computeTriageOverall(R){
   else if(warn>=2){status='FLAG';cls='s-flag';icon='🚩';txt='Two or more domains were borderline. Clinical correlation is advised.';speak='Two or more findings were borderline. Clinical correlation is advised.';}
   else if(warn===1){status='WATCH';cls='s-watch';icon='👁️';txt='One borderline finding. Consider monitoring or re-screening.';speak='One borderline finding. Consider monitoring or re-screening.';}
   else{status='NORMAL';cls='s-normal';icon='✅';txt='No significant findings on this zero-hardware screen.';speak='No significant findings on this screen.';}
-  return{status:status,label:status,cls:cls,icon:icon,txt:txt,speak:speak,confidence:computeConfidence(R),bad:bad,warn:warn};
+  var cc=computeConfidence(R);
+  return{status:status,label:status,cls:cls,icon:icon,txt:txt,speak:speak,
+    confidence:cc.confidence,
+    validFramePct:cc.validFramePct, lightingScore:cc.lightingScore,
+    calibStability:cc.calibStability, completionRate:cc.completionRate,
+    bad:bad,warn:warn};
 }
 
 // ── TRIAGE exam runner (replaces legacy CN sequence) ──
@@ -1973,6 +1989,7 @@ async function startExam(){
   examRunning=true;
   TRIAGE.active=true; TRIAGE.result=null;
   TRIAGE.capturedFrames=0; TRIAGE.expectedFrames=0; TRIAGE.stepsComplete=0; TRIAGE.calibStability=0; TRIAGE.lightingScore=0;
+  TRIAGE.startMs=performance.now(); TRIAGE.renderFrames=0;
   hideResults();
   var fwEl=document.querySelector('.fab-wrap'); if(fwEl)fwEl.style.display='none';  // hide FAB during TRIAGE
   document.getElementById('alertBox').style.display='none';
@@ -2000,6 +2017,9 @@ async function startExam(){
   TRIAGE.active=false; examRunning=false;
 
   var overall=computeTriageOverall(R);
+  var durSec=(performance.now()-TRIAGE.startMs)/1000;
+  overall.examDurationSec=Math.round(durSec*10)/10;
+  overall.avgFps=durSec>0?Math.round(TRIAGE.renderFrames/durSec):0;
   TRIAGE.result={domains:R, overall:overall};
   saveExamToSupabase(TRIAGE.result);
 
@@ -2077,10 +2097,13 @@ async function saveExamToSupabase(result) {
   try {
     var o = result.overall;
     var d = result.domains;
+    var num = function(x){ return (typeof x==='number' && isFinite(x)) ? x : null; };
+    var rnd = function(x,p){ return (typeof x==='number' && isFinite(x)) ? Math.round(x*p)/p : null; };
     var record = {
       exam_mode: 'TRIAGE',
       overall_result: o.status,
       confidence: o.confidence,
+      // labels / metrics / flags
       perclos_label: d.perclos.label,
       perclos_metric: d.perclos.metric,
       perclos_flag: d.perclos.flag,
@@ -2096,6 +2119,25 @@ async function saveExamToSupabase(result) {
       head_label: d.head.label,
       head_metric: d.head.metric,
       head_flag: d.head.flag,
+      // raw numeric values
+      perclos_value: num(d.perclos.value),          // 0-100 (%)
+      cn7_value: rnd(d.cn7.value,1000),              // asymmetry decimal
+      gcs_e: num(d.gcs.e),                           // integer E score
+      tongue_value: rnd(d.tongue.value,1000),        // aperture decimal
+      head_yaw_sd: rnd(d.head.yawSD,100),            // degrees
+      head_pitch_sd: rnd(d.head.pitchSD,100),        // degrees
+      head_roll_sd: rnd(d.head.rollSD,100),          // degrees
+      // quality / confidence sub-components (0-100)
+      valid_frame_pct: num(o.validFramePct),
+      lighting_score: num(o.lightingScore),
+      calibration_stability: num(o.calibStability),
+      completion_rate: num(o.completionRate),
+      exam_duration_sec: num(o.examDurationSec),
+      avg_fps: num(o.avgFps),
+      // subject metadata (no input yet — schema-ready)
+      subject_age: null,
+      subject_sex: null,
+      subject_id: null,
       device_info: navigator.userAgent,
       session_id: (function(){ try{ return sessionStorage.getItem('cc_demo_access')||'guest'; }catch(e){return 'guest';} })()
     };
