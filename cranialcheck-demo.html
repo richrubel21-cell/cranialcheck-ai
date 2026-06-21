@@ -338,7 +338,7 @@ body{font-family:var(--f);background:#000;-webkit-font-smoothing:antialiased}
       </div>
       <div class="start-tag"><span class="dot"></span> TRIAGE · 90-Second Screen</div>
       <div class="start-title">Zero-Hardware <span class="accent">Neurological</span> Screening <span class="gold">in your browser</span></div>
-      <div class="start-sub">Six rapid checks — alertness, facial motor, eye-opening, tongue, and head stability. No app, no hardware. Position your face and let the AI guide you.</div>
+      <div class="start-sub">Six rapid checks — alertness, eye tracking, quick saccades, facial symmetry, tongue, and head stability. No app, no hardware. Just follow the on-screen prompts.</div>
       <button class="start-btn" onclick="initCamera()">Begin Screening →</button>
       <div class="start-foot">
         <span>🔒 On-device</span><span>👁️ 478 landmarks</span><span>⚡ &lt;0.5s latency</span>
@@ -511,14 +511,17 @@ function resetDiagForExam(){
   DIAG.errors=[];
 }
 
-// Six distinct actions — each step asks the subject to do something visibly different.
+// Field-grade 90-sec TBI screen (MACE2 / VOMS / BE-FAST aligned). Six distinct steps, two with
+// animated on-screen targets (pursuit + saccades). 'calib' is an internal baseline, not numbered.
+// type: 'hold' = capture window, 'pursuit'/'saccade' = animated dot task. showDot = fixed center target.
 var TRIAGE_STEPS=[
-  {id:'calib',  emoji:'🎯', name:'Calibrating',     bannerSub:'Hold still — getting baseline',  title:'Hold still and look at the camera',             sub:'Step 1 of 6 · Baseline calibration',      dur:1800},
-  {id:'perclos',emoji:'👁️', name:'Alertness',       bannerSub:'Eyes open, blink normally',      title:'Keep your eyes open and blink normally',        sub:'Step 2 of 6 · Alertness (PERCLOS)',       dur:8000},
-  {id:'cn7',    emoji:'😀', name:'Smile',           bannerSub:'Big smile — show your teeth',     title:'Smile as big as you can — show your teeth',     sub:'Step 3 of 6 · Facial symmetry (CN VII)',  dur:5000},
-  {id:'gcs',    emoji:'🤨', name:'Eyebrow Raise',   bannerSub:'Raise brows, eyes wide',         title:'Raise your eyebrows and open your eyes wide',   sub:'Step 4 of 6 · Eye-opening (GCS proxy)',   dur:4000},
-  {id:'tongue', emoji:'👅', name:'Tongue Out',      bannerSub:'Tongue straight out, hold it',   title:'Stick your tongue straight out and hold it',    sub:'Step 5 of 6 · Tongue protrusion (CN XII)',dur:5000},
-  {id:'head',   emoji:'🧭', name:'Head Steady',     bannerSub:'Head still, eyes forward',       title:'Hold your head perfectly still, eyes forward', sub:'Step 6 of 6 · Head stability',            dur:5000}
+  {id:'calib',   type:'hold',    emoji:'🎯', name:'Calibrating',   bannerSub:'Hold still — getting baseline',  title:'Hold still and look at the camera',                       sub:'Baseline calibration',                 dur:1800},
+  {id:'perclos', type:'hold',    emoji:'👁️', name:'Alertness',     bannerSub:'Eyes open, blink normally',      title:'Look at the camera — eyes open, blink normally',          sub:'Step 1 of 6 · Alertness (PERCLOS)',    dur:10000, showDot:true},
+  {id:'pursuit', type:'pursuit', emoji:'🔵', name:'Eye Tracking',  bannerSub:'Follow the dot — head still',    title:'Follow the moving dot with your eyes — keep your head still', sub:'Step 2 of 6 · Smooth pursuit',      dur:15000},
+  {id:'saccades',type:'saccade', emoji:'⚡', name:'Quick Looks',   bannerSub:'Snap your eyes to each dot',      title:'Snap your eyes to each dot as fast as you can',           sub:'Step 3 of 6 · Horizontal saccades',    dur:10000},
+  {id:'cn7',     type:'hold',    emoji:'😀', name:'Smile & Brows', bannerSub:'Smile, then raise eyebrows',     title:'Smile big — then raise your eyebrows high',               sub:'Step 4 of 6 · Facial symmetry (CN VII)',dur:10000},
+  {id:'tongue',  type:'hold',    emoji:'👅', name:'Tongue Out',    bannerSub:'Tongue straight out, hold it',   title:'Stick your tongue straight out and hold it',             sub:'Step 5 of 6 · Tongue (CN XII)',        dur:5000},
+  {id:'head',    type:'hold',    emoji:'🧭', name:'Head Steady',   bannerSub:'Head still, eyes on the dot',    title:'Hold your head perfectly still and stare at the dot',     sub:'Step 6 of 6 · Head stability',         dur:10000, showDot:true}
 ];
 
 // ── ASSESSMENT DATA ──
@@ -2090,6 +2093,7 @@ async function triageStep(step){
   document.getElementById('cnPromptTitle').textContent=step.title;
   document.getElementById('cnPromptSub').textContent=step.sub;
   setStatus(step.name, step.bannerSub);                  // clear step name on status banner
+  if(step.showDot){ createAttDot(); moveAttDot(0.5,0.46); attDotEl.style.display='block'; }
   await speakAndWait(step.title);                        // instruction completes BEFORE window opens
   await w(400);
   var fill=document.getElementById('cnProgressFill');
@@ -2101,6 +2105,7 @@ async function triageStep(step){
   if(CC_DEBUG)console.log('[CC] ▶ capture START '+step.id+' (iris='+BUF.iris.length+', face='+(!!faceLandmarker)+')');
   await w(step.dur);
   TRIAGE.capturing=false;
+  if(step.showDot&&attDotEl){ attDotEl.style.display='none'; }
   fill.style.transition='width 3s linear';
   var frames=TRIAGE.frames.slice();
   if(CC_DEBUG)console.log('[CC] ■ capture END   '+step.id+' → '+frames.length+' frames');
@@ -2201,7 +2206,7 @@ function computeConfidence(R){
   var validFramePct=TRIAGE.expectedFrames>0?clamp(TRIAGE.capturedFrames/TRIAGE.expectedFrames,0,1):0;
   var lightingScore=clamp(TRIAGE.lightingScore,0,1);
   var calibStability=clamp(TRIAGE.calibStability,0,1);
-  var completionRate=clamp(TRIAGE.stepsComplete/6,0,1);
+  var completionRate=clamp(TRIAGE.stepsComplete/(TRIAGE.totalSteps||6),0,1);
   var conf=0.35*validFramePct + 0.20*lightingScore + 0.25*calibStability + 0.20*completionRate;
   return {
     confidence:Math.round(clamp(conf,0,1)*100),
@@ -2214,7 +2219,8 @@ function computeConfidence(R){
 
 // Overall: URGENT if any red flag fires, FLAG if 2+ borderline, WATCH if 1 borderline, else NORMAL.
 function computeTriageOverall(R){
-  var doms=[R.perclos,R.cn7,R.gcs,R.tongue,R.head];
+  // All clinical domains except the internal calibration step.
+  var doms=Object.keys(R).filter(function(k){return k!=='calib';}).map(function(k){return R[k];});
   var valid=doms.filter(function(d){return d.label!=='No data';}).length;
   var bad=doms.filter(function(d){return d.flag==='bad';}).length;
   var warn=doms.filter(function(d){return d.flag==='warn';}).length;
@@ -2237,13 +2243,96 @@ function computeTriageOverall(R){
     bad:bad,warn:warn};
 }
 
-// ── TRIAGE exam runner (replaces legacy CN sequence) ──
+// ── ANIMATED DOT TASKS (smooth pursuit + saccades) ──
+// Reuse the ATT capture path in the render loop (gx/gy gaze vs tx/ty target) by animating attDotEl.
+function corr(a,b){
+  var n=Math.min(a.length,b.length); if(n<3)return 0;
+  var ma=0,mb=0,i;
+  for(i=0;i<n;i++){ma+=a[i];mb+=b[i];} ma/=n; mb/=n;
+  var num=0,da=0,db=0;
+  for(i=0;i<n;i++){var x=a[i]-ma,y=b[i]-mb;num+=x*y;da+=x*x;db+=y*y;}
+  return (da>0&&db>0)? num/Math.sqrt(da*db):0;
+}
+// Animate the dot for `durMs`; capture happens in the render loop while ATT.active. Returns frames.
+function runDotTask(mode,durMs){
+  createAttDot();
+  ATT.active=true; ATT.frames=[]; ATT.blinkCount=0; ATT.blinkInProgress=false; ATT.result=null; ATT.dotDur=durMs;
+  moveAttDot(0.5,0.46); attDotEl.style.display='block';
+  var startT=performance.now();
+  return new Promise(function(resolve){
+    function tick(){
+      var el=performance.now()-startT;
+      if(el>=durMs){ ATT.active=false; if(attDotEl)attDotEl.style.display='none'; resolve(ATT.frames.slice()); return; }
+      var ph=el/durMs;
+      var tbH=(document.querySelector('.topbar')||{offsetHeight:56}).offsetHeight;
+      var topFrac=(tbH+60)/window.innerHeight;
+      var span=1-topFrac-0.14, midY=topFrac+span*0.5, x, y;
+      if(mode==='pursuit'){
+        if(ph<0.6){ x=0.5+0.38*Math.sin(ph/0.6*Math.PI*3); y=midY; }            // horizontal sweeps L↔R
+        else      { x=0.5; y=topFrac+span*(0.5+0.45*Math.sin((ph-0.6)/0.4*Math.PI*2)); } // vertical up↔down
+      }else{ // saccade — jump between two fixed targets ~ every 1.1s
+        x=(Math.floor(el/1100)%2)?0.82:0.18; y=midY;
+      }
+      ATT.dotX=x; ATT.dotY=y; moveAttDot(x,y);
+      requestAnimationFrame(tick);
+    }
+    tick();
+  });
+}
+async function dotStep(step){
+  document.getElementById('cnEmoji').textContent=step.emoji;
+  document.getElementById('cnPromptTitle').textContent=step.title;
+  document.getElementById('cnPromptSub').textContent=step.sub;
+  setStatus(step.name, step.bannerSub);
+  await speakAndWait(step.title);
+  await w(300);
+  var fill=document.getElementById('cnProgressFill');
+  fill.style.transition='none'; fill.style.width='0%'; void fill.offsetWidth;
+  fill.style.transition='width '+step.dur+'ms linear';
+  setTimeout(function(){fill.style.width='100%';},30);
+  var frames=await runDotTask(step.type==='saccade'?'saccade':'pursuit', step.dur);
+  fill.style.transition='width 3s linear';
+  DIAG[step.id+'_frames']=frames.length;
+  TRIAGE.capturedFrames+=frames.length;
+  TRIAGE.expectedFrames+=Math.round(step.dur/33.3);
+  if(frames.length>=Math.max(10,step.dur/1000*3))TRIAGE.stepsComplete++;
+  return frames;
+}
+// Smooth pursuit — reward eyes moving IN SYNC with the target (correlation, calibration-free,
+// sign-robust). abs() handles whatever the mirror sign convention is.
+function scorePursuit(frames){
+  if(frames.length<10)return{score:0,label:'No data',flag:'warn',metric:'eyes not tracked during pursuit'};
+  var ch=Math.abs(corr(frames.map(function(f){return f.gx;}),frames.map(function(f){return f.tx;})));
+  var cv=Math.abs(corr(frames.map(function(f){return f.gy;}),frames.map(function(f){return f.ty;})));
+  var s=clamp(Math.max(ch, ch*0.6+cv*0.4),0,1);
+  var flag=s>=0.6?'good':s>=0.4?'warn':'bad';
+  var label=s>=0.6?'Smooth pursuit intact':s>=0.4?'Pursuit partially tracked':'Pursuit poorly tracked';
+  return{score:s, value:Math.round(s*100), label:label, flag:flag, metric:'eye–target sync '+Math.round(s*100)+'%'};
+}
+// Saccades — does gaze jump in the correct direction toward each target? Sign-robust (mirror-safe).
+function scoreSaccade(frames){
+  if(frames.length<8)return{score:0,label:'No data',flag:'warn',metric:'eyes not tracked'};
+  var on=frames.filter(function(f){return Math.abs(f.tx)>0.05;});
+  if(on.length<5)return{score:0,label:'No data',flag:'warn',metric:'no targets captured'};
+  var a=0,b=0;
+  on.forEach(function(f){ var sg=f.gx>0?1:-1, st=f.tx>0?1:-1; if(sg===st)a++; else b++; });
+  var acc=Math.max(a,b)/on.length;                                  // mirror-convention robust
+  var gxs=frames.map(function(f){return f.gx;});
+  var amp=Math.max.apply(null,gxs)-Math.min.apply(null,gxs);
+  var moved=amp>0.04;
+  var s=moved?clamp(acc,0,1):0.3;
+  var flag=(moved&&acc>=0.7)?'good':(moved&&acc>=0.5)?'warn':'bad';
+  var label=!moved?'Minimal eye movement':acc>=0.7?'Saccades on target':acc>=0.5?'Some saccade errors':'Saccades inaccurate';
+  return{score:s, value:Math.round(acc*100), label:label, flag:flag, metric:'direction accuracy '+Math.round(acc*100)+'%'};
+}
+
+// ── TRIAGE exam runner ──
 async function startExam(){
   if(examRunning||!cameraActive)return;
   examRunning=true;
   TRIAGE.active=true; TRIAGE.result=null;
   TRIAGE.capturedFrames=0; TRIAGE.expectedFrames=0; TRIAGE.stepsComplete=0; TRIAGE.calibStability=0; TRIAGE.lightingScore=0;
-  TRIAGE.startMs=performance.now(); TRIAGE.renderFrames=0;
+  TRIAGE.startMs=performance.now(); TRIAGE.renderFrames=0; TRIAGE.totalSteps=TRIAGE_STEPS.length;
   resetDiagForExam();
   if(!DIAG.model_loaded)diagError('model not loaded at exam start (delegate='+DIAG.model_delegate+')');
   hideResults();
@@ -2261,7 +2350,7 @@ async function startExam(){
   if(!DIAG.model_loaded){
     document.getElementById('cnPrompt').style.display='none';
     TRIAGE.active=false; examRunning=false;
-    var Rf={calib:scoreCalib([]),perclos:scorePerclos([]),cn7:scoreCN7([]),gcs:scoreGCS([]),tongue:scoreTongue([]),head:scoreHead([])};
+    var Rf={perclos:scorePerclos([]),pursuit:scorePursuit([]),saccades:scoreSaccade([]),cn7:scoreCN7([]),tongue:scoreTongue([]),head:scoreHead([])};
     var ovf=computeTriageOverall(Rf);
     ovf.examDurationSec=Math.round((performance.now()-TRIAGE.startMs)/100)/10;
     ovf.avgFps=0;
@@ -2289,13 +2378,16 @@ async function startExam(){
   }
   TRIAGE.lightingScore=sampleLighting(document.getElementById('webcam'));
 
+  // Run each step in order. calib runs first (sets baselines incl. baseSpread); pursuit/saccade
+  // use the animated dot engine, the rest are capture-window 'hold' steps.
+  var HOLD={calib:scoreCalib,perclos:scorePerclos,cn7:scoreCN7,tongue:scoreTongue,head:scoreHead};
   var R={};
-  R.calib  = scoreCalib(await triageStep(TRIAGE_STEPS[0]));
-  R.perclos= scorePerclos(await triageStep(TRIAGE_STEPS[1]));
-  R.cn7    = scoreCN7(await triageStep(TRIAGE_STEPS[2]));
-  R.gcs    = scoreGCS(await triageStep(TRIAGE_STEPS[3]));
-  R.tongue = scoreTongue(await triageStep(TRIAGE_STEPS[4]));
-  R.head   = scoreHead(await triageStep(TRIAGE_STEPS[5]));
+  for(var si=0;si<TRIAGE_STEPS.length;si++){
+    var st=TRIAGE_STEPS[si];
+    if(st.type==='pursuit'){ R[st.id]=scorePursuit(await dotStep(st)); }
+    else if(st.type==='saccade'){ R[st.id]=scoreSaccade(await dotStep(st)); }
+    else { var fr=await triageStep(st); var fn=HOLD[st.id]; if(fn)R[st.id]=fn(fr); }
+  }
 
   document.getElementById('cnPrompt').style.display='none';
   TRIAGE.active=false; examRunning=false;
@@ -2333,16 +2425,19 @@ function showResults(){
     +'<div class="res-status-label">'+o.label+'</div>'
     +'<div class="res-status-txt">'+o.txt+'</div>'
     +'<div class="res-conf">◉ Confidence '+o.confidence+'%</div></div>';
-  h+='<div class="res-domains">'
-    +domCard('👁️','Alertness (PERCLOS)',d.perclos)
-    +domCard('😐','Facial Motor (CN VII)',d.cn7)
-    +domCard('⬆️','GCS Proxy',d.gcs)
-    +domCard('👅','Tongue (CN XII)',d.tongue)
-    +domCard('🧭','Head Stability',d.head)
-    +'</div>';
+  var DOM_META={
+    perclos:{e:'👁️',n:'Alertness (PERCLOS)'},
+    pursuit:{e:'🔵',n:'Smooth Pursuit'},
+    saccades:{e:'⚡',n:'Horizontal Saccades'},
+    cn7:{e:'😀',n:'Facial Symmetry (CN VII)'},
+    tongue:{e:'👅',n:'Tongue (CN XII)'},
+    head:{e:'🧭',n:'Head Stability'}
+  };
+  var domsHtml='';
+  Object.keys(d).forEach(function(k){ if(k==='calib')return; var m=DOM_META[k]; if(!m||!d[k])return; domsHtml+=domCard(m.e,m.n,d[k]); });
+  h+='<div class="res-domains">'+domsHtml+'</div>';
   h+='<div class="res-actions">'
     +'<button class="res-btn primary" onclick="resetExam()">RUN AGAIN</button>'
-    +'<button class="res-btn primary" disabled>RUN ACUTE MODE — Coming Soon</button>'
     +'<button class="res-btn outline" onclick="exportReport()">EXPORT REPORT</button>'
     +'</div>';
   h+='<div class="res-disclaim">This screening tool aids clinical assessment. It does not constitute a diagnosis.</div>';
@@ -2356,19 +2451,19 @@ function hideResults(){
 }
 function exportReport(){
   var r=TRIAGE.result; if(!r)return;
-  var o=r.overall, d=r.domains;
+  var o=r.overall, d=r.domains||{};
+  var NAMES={perclos:'Alertness (PERCLOS)',pursuit:'Smooth Pursuit',saccades:'Horizontal Saccades',
+             cn7:'Facial Symmetry (CN VII)',tongue:'Tongue (CN XII)',head:'Head Stability'};
   var lines=[
     'CranialCheck AI — TRIAGE Screening Report',
     'Zero-hardware · 100% in-browser','',
-    'OVERALL: '+o.label+'   (Confidence '+o.confidence+'%)','',
-    'Alertness (PERCLOS):    '+d.perclos.label+' — '+d.perclos.metric,
-    'Facial Motor (CN VII):  '+d.cn7.label+' — '+d.cn7.metric,
-    'GCS Proxy:              '+d.gcs.label+' — '+d.gcs.metric,
-    'Tongue (CN XII):        '+d.tongue.label+' — '+d.tongue.metric,
-    'Head Stability:         '+d.head.label+' — '+d.head.metric,'',
-    'This screening tool aids clinical assessment. It does not constitute a diagnosis.',
-    'Contact: rich.rubel@predictwellhealth.ai'
+    'OVERALL: '+o.label+'   (Confidence '+o.confidence+'%)',''
   ];
+  Object.keys(NAMES).forEach(function(k){
+    if(d[k]) lines.push((NAMES[k]+':').padEnd(26,' ')+d[k].label+' — '+d[k].metric);
+  });
+  lines.push('','This screening tool aids clinical assessment. It does not constitute a diagnosis.',
+    'Contact: rich.rubel@predictwellhealth.ai');
   var blob=new Blob([lines.join('\n')],{type:'text/plain'});
   var ts=new Date().toISOString().replace(/[:.]/g,'-').replace('T','_').slice(0,19);
   var a=document.createElement('a');
@@ -2381,7 +2476,11 @@ async function saveExamToSupabase(result) {
   if(!sb){ console.warn('[CC] No Supabase client — skipping save (exam still ran).'); return; }
   try {
     var o = result.overall;
-    var d = result.domains;
+    var d = result.domains || {};
+    // Guard: TRIAGE blueprint changed (gcs removed; pursuit/saccades added). Missing domains → {}
+    // so the existing Supabase columns serialize to null instead of throwing. (pursuit/saccades
+    // have no columns yet — they'll persist once the table is migrated.)
+    ['perclos','cn7','gcs','tongue','head'].forEach(function(k){ if(!d[k]) d[k]={}; });
     var num = function(x){ return (typeof x==='number' && isFinite(x)) ? x : null; };
     var rnd = function(x,p){ return (typeof x==='number' && isFinite(x)) ? Math.round(x*p)/p : null; };
     var record = {
