@@ -65,8 +65,10 @@ body{font-family:var(--f);background:#000;-webkit-font-smoothing:antialiased}
 /* ── VIDEO ── */
 .video-wrap{position:absolute;inset:0;background:#000}
 #webcam{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;transform:scaleX(-1)}
-/* Canvas intrinsic size = video resolution + object-fit:cover → mesh aligns exactly on top of the video */
-#meshCanvas{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;pointer-events:none;transform:scaleX(-1)}
+/* Canvas is NOT CSS-mirrored or object-fit'd. Buffer = box×DPR; mesh is mapped onto the
+   cover-cropped video via JS coverMap() (mirroring baked into the math). This is the only
+   reliable way to align a mesh over an object-fit:cover video on mobile. */
+#meshCanvas{position:absolute;inset:0;width:100%;height:100%;pointer-events:none}
 
 /* ── START SCREEN — branded dark hero, matches landing page ── */
 @keyframes spin{to{transform:rotate(360deg)}}
@@ -635,20 +637,28 @@ function landmarkerOpts(delegate){
     },
     runningMode:'VIDEO',
     numFaces:1,
-    minFaceDetectionConfidence:0.6,   // spec 17.2 — raised from default to reduce false detections in field lighting
+    minFaceDetectionConfidence:0.5,   // default — 0.6 was suppressing real faces in field lighting
     minFacePresenceConfidence:0.5,
     minTrackingConfidence:0.5,
     outputFaceBlendshapes:true,
     outputFacialTransformationMatrixes:true
   };
 }
+// Pinned to a mobile-proven stable release (0.10.14). Newer builds have flaked on some phones;
+// this version is widely validated and exports everything we use (FaceLandmarker, FilesetResolver,
+// FACE_LANDMARKS_* connection constants). Upgrade only after on-device retest.
+var MP_VER='0.10.14';
+var MP_CDN='https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@'+MP_VER;
+function isIOS(){
+  return /iPad|iPhone|iPod/.test(navigator.userAgent) ||
+    (navigator.platform==='MacIntel' && navigator.maxTouchPoints>1); // iPadOS reports as Mac
+}
 var visionModule=null;
 async function loadFaceLandmarker(){
-  // Load the MediaPipe tasks-vision ES module via dynamic import().
-  // (The UMD vision_bundle.js does NOT exist for 0.10.3 — only vision_bundle.mjs.)
+  // Load the MediaPipe tasks-vision ES module via dynamic import() (only .mjs exists, no UMD).
   try{
     if(!visionModule){
-      visionModule=await import('https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.35/vision_bundle.mjs');
+      visionModule=await import(MP_CDN+'/vision_bundle.mjs');
     }
   }catch(impErr){
     console.error('[CC] MediaPipe module import failed:',impErr);
@@ -667,20 +677,28 @@ async function loadFaceLandmarker(){
     return false;
   }
   try{
-    var fileset=await visionModule.FilesetResolver.forVisionTasks(
-      'https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.35/wasm'
-    );
-    // Try GPU first, fall back to CPU (GPU delegate is unavailable on many devices/browsers)
-    try{
-      faceLandmarker=await visionModule.FaceLandmarker.createFromOptions(fileset,landmarkerOpts('GPU'));
-      DIAG.model_loaded=true; DIAG.model_delegate='GPU';
-      console.log('[CC] FaceLandmarker ready (GPU delegate)');
-    }catch(gpuErr){
-      console.warn('[CC] GPU delegate failed, retrying on CPU:',gpuErr&&gpuErr.message);
-      diagError('GPU delegate failed: '+(gpuErr&&gpuErr.message));
-      faceLandmarker=await visionModule.FaceLandmarker.createFromOptions(fileset,landmarkerOpts('CPU'));
-      DIAG.model_loaded=true; DIAG.model_delegate='CPU';
-      console.log('[CC] FaceLandmarker ready (CPU delegate)');
+    var fileset=await visionModule.FilesetResolver.forVisionTasks(MP_CDN+'/wasm');
+    // Delegate order: iOS Safari/WebKit GPU (WebGL2) delegate is unreliable — it can create
+    // successfully yet return zero landmarks (google-ai-edge/mediapipe #4499, #6142, #5122).
+    // So on iOS we try CPU FIRST (reliable, fast enough for one face), GPU only as last resort.
+    // On Android/desktop, GPU first for speed, CPU fallback.
+    var delegates = isIOS() ? ['CPU','GPU'] : ['GPU','CPU'];
+    faceLandmarker=null;
+    for(var i=0;i<delegates.length;i++){
+      try{
+        faceLandmarker=await visionModule.FaceLandmarker.createFromOptions(fileset,landmarkerOpts(delegates[i]));
+        DIAG.model_loaded=true; DIAG.model_delegate=delegates[i];
+        console.log('[CC] FaceLandmarker ready ('+delegates[i]+' delegate)');
+        break;
+      }catch(delErr){
+        console.warn('[CC] '+delegates[i]+' delegate failed:',delErr&&delErr.message);
+        diagError(delegates[i]+' delegate failed: '+(delErr&&delErr.message));
+      }
+    }
+    if(!faceLandmarker){
+      DIAG.model_loaded=false; DIAG.model_delegate='failed';
+      setStatus('AI model failed to load','Tap Reset to retry — check connection');
+      return false;
     }
     setStatus('AI Model Ready','Position your face in the frame');
     return true;
@@ -694,40 +712,123 @@ async function loadFaceLandmarker(){
   }
 }
 
-// ── CAMERA ──
-async function initCamera(){
-  try{
-    if(stream)stream.getTracks().forEach(t=>t.stop());
-    stream=await navigator.mediaDevices.getUserMedia({
-      // spec 17.1 — ideal 720p/30fps with low-end fallback floors
-      video:{facingMode:{ideal:facingMode},width:{ideal:1280,min:640},height:{ideal:720,min:480},
-             frameRate:{ideal:30,min:15},aspectRatio:{ideal:16/9}},
-      audio:{echoCancellation:true,noiseSuppression:true,autoGainControl:true}
-    });
-    var video=document.getElementById('webcam');
-    var canvas=document.getElementById('meshCanvas');
-    video.srcObject=stream;
-    await video.play();
-    canvas.width=video.videoWidth||1280;
-    canvas.height=video.videoHeight||720;
-    document.getElementById('startScreen').style.display='none';
-    video.style.display='block';
-    canvas.style.display='block';
-    document.getElementById('camInfo').style.display='flex';
-    document.getElementById('statusBanner').style.display='block';
-    document.getElementById('scoresPanel').style.display='block';
-    positionOverlays();
-    cameraActive=true;
-    setStatus('Loading AI Model...','Please wait');
-    var loaded=await loadFaceLandmarker();
-    startRenderLoop();
-    // Wait 1.5s after model loads for render loop to warm up, then start exam
-    await new Promise(function(r){setTimeout(r,1500);});
-    await speakAndWait('Camera ready. Starting triage screening.');
-    startExam();
-  }catch(err){
-    alert('Camera access denied. Please allow camera permissions and try again.');
+// ── CAMERA + CANVAS ALIGNMENT ──
+var _ccVideo=null, _ccCanvas=null, _dpr=1;
+
+// Size the mesh canvas backing store to its CSS box × devicePixelRatio (crisp, no stretch).
+function sizeMeshCanvas(){
+  var c=_ccCanvas; if(!c)return;
+  _dpr=window.devicePixelRatio||1;
+  var w=c.clientWidth||window.innerWidth, h=c.clientHeight||window.innerHeight;
+  var bw=Math.max(1,Math.round(w*_dpr)), bh=Math.max(1,Math.round(h*_dpr));
+  if(c.width!==bw||c.height!==bh){c.width=bw;c.height=bh;}
+}
+window.addEventListener('resize',function(){if(cameraActive)sizeMeshCanvas();});
+window.addEventListener('orientationchange',function(){setTimeout(function(){if(cameraActive)sizeMeshCanvas();},300);});
+
+// Map a normalized MediaPipe landmark (relative to the full video frame) onto the canvas,
+// reproducing the video's object-fit:cover crop and mirroring the front camera in math.
+// This is the ONLY reliable cross-device alignment method (no object-fit on canvas).
+function coverMap(p){
+  var v=_ccVideo, c=_ccCanvas;
+  var vw=v.videoWidth||1280, vh=v.videoHeight||720, cw=c.width, ch=c.height;
+  var s=Math.max(cw/vw, ch/vh);
+  var dw=vw*s, dh=vh*s, ox=(cw-dw)/2, oy=(ch-dh)/2;
+  var x=p.x*dw+ox, y=p.y*dh+oy;
+  return {x: cw-x, y: y};   // mirror x to match CSS-mirrored #webcam (front camera)
+}
+
+function camMsg(err){
+  var n=err&&err.name;
+  if(n==='NotAllowedError') return ['Camera permission blocked','Allow camera access in your browser, then reload and tap Begin.'];
+  if(n==='NotFoundError')   return ['No camera found','This device has no usable camera.'];
+  if(n==='NotReadableError')return ['Camera is busy','Another app or tab is using the camera. Close it and reload.'];
+  if(n==='OverconstrainedError') return ['Camera settings unsupported','Retrying with default settings…'];
+  if(n==='SecurityError')   return ['Camera disabled','Camera access is turned off in this browser’s settings.'];
+  return ['Camera error', (n||(err&&err.message)||'Unknown')+' — reload and try again.'];
+}
+function camFail(title,sub){
+  var ss=document.getElementById('startScreen');
+  if(ss){
+    ss.style.display='flex';
+    var st=ss.querySelector('.start-title'), su=ss.querySelector('.start-sub');
+    if(st)st.textContent=title;
+    if(su)su.textContent=sub||'';
   }
+  console.warn('[CC] camFail:',title,sub);
+}
+
+async function initCamera(){
+  var video=document.getElementById('webcam');
+  var canvas=document.getElementById('meshCanvas');
+  _ccVideo=video; _ccCanvas=canvas;
+
+  // Pre-flight: catch the two silent killers before a confusing failure.
+  if(!window.isSecureContext){
+    return camFail('Open over HTTPS','The camera only works on a secure (https) page or localhost.');
+  }
+  if(!navigator.mediaDevices||!navigator.mediaDevices.getUserMedia){
+    return camFail('Open in Safari or Chrome','This in-app browser can’t access the camera. Tap ⋯ and “Open in Safari/Chrome”.');
+  }
+
+  // Release any prior stream before re-acquiring (prevents NotReadableError on Android re-init).
+  if(stream){ try{stream.getTracks().forEach(function(t){t.stop();});}catch(e){} stream=null; video.srcObject=null; }
+
+  // Make the video visible BEFORE play() — iOS won't paint a hidden/zero-area video.
+  // (startScreen still covers it via z-index until we confirm success, so errors stay readable.)
+  video.style.display='block';
+  canvas.style.display='block';
+  video.muted=true; video.setAttribute('playsinline',''); video.setAttribute('webkit-playsinline','');
+
+  var constraints={
+    video:{facingMode:{ideal:facingMode},width:{ideal:1280},height:{ideal:720},frameRate:{ideal:30}},
+    audio:{echoCancellation:true,noiseSuppression:true,autoGainControl:true}
+  };
+  try{
+    stream=await navigator.mediaDevices.getUserMedia(constraints);
+  }catch(err){
+    if(err&&err.name==='OverconstrainedError'){
+      try{ stream=await navigator.mediaDevices.getUserMedia({video:{facingMode:{ideal:facingMode}},audio:true}); }
+      catch(e2){ var m2=camMsg(e2); return camFail(m2[0],m2[1]); }
+    }else{
+      var m=camMsg(err); return camFail(m[0],m[1]);
+    }
+  }
+
+  video.srcObject=stream;
+  // Wait for metadata so videoWidth/Height are non-zero (the classic 0×0 detection killer).
+  await new Promise(function(res){
+    var done=false, finish=function(){if(!done){done=true;res();}};
+    if(video.readyState>=1 && video.videoWidth>0) return finish();
+    video.addEventListener('loadedmetadata',finish,{once:true});
+    setTimeout(finish,3000); // safety net
+  });
+  try{ await video.play(); }
+  catch(playErr){ console.warn('[CC] video.play() rejected:',playErr&&playErr.message); /* stream still renders */ }
+
+  // Black-frame guard: stream acquired but no pixels.
+  var vtrack=stream.getVideoTracks&&stream.getVideoTracks()[0];
+  if(!vtrack || vtrack.readyState==='ended'){
+    return camFail('Camera didn’t start','The camera stream ended unexpectedly. Reload and try again.');
+  }
+  vtrack.addEventListener&&vtrack.addEventListener('ended',function(){ if(cameraActive) setStatus('Camera disconnected','Reload to restart'); });
+
+  // Success — reveal the live view.
+  document.getElementById('startScreen').style.display='none';
+  document.getElementById('camInfo').style.display='flex';
+  document.getElementById('statusBanner').style.display='block';
+  document.getElementById('scoresPanel').style.display='block';
+  cameraActive=true;
+  sizeMeshCanvas();
+  positionOverlays();
+
+  setStatus('Loading AI Model…','Please wait');
+  await loadFaceLandmarker();
+  startRenderLoop();
+  // Brief warm-up so the first frames flow, then start the exam.
+  await new Promise(function(r){setTimeout(r,1200);});
+  await speakAndWait('Camera ready. Starting triage screening.');
+  startExam();
 }
 
 function switchCamera(){
@@ -1239,189 +1340,159 @@ function scoreToDeg(s,testId){
 }
 
 // ── RENDER LOOP ──
+// Pattern (multi-source consensus): VIDEO mode, detect once per NEW video frame
+// (currentTime dedup) with a strictly-increasing timestamp, but DRAW every rAF so the
+// overlay never flickers. Detection is gated on videoWidth>0 (frames actually flowing).
 var lastVideoTime=-1;
-var lastDetectMs=0;              // time-throttle for MediaPipe detection (robust vs currentTime stalls)
-var CC_DEBUG=true;               // console diagnostics for the capture pipeline
-var dbgFeatOK=0, dbgFeatNull=0;  // per-second extractFeatures success/miss counters
+var lastDetectTs=0;              // enforce strictly-increasing detect timestamp
+var lastResults=null;           // most recent detection result (drawn every frame)
+var CC_DEBUG=true;
+var dbgFeatOK=0, dbgFeatNull=0;
 function startRenderLoop(){
-  var video=document.getElementById('webcam');
-  var canvas=document.getElementById('meshCanvas');
+  var video=_ccVideo||document.getElementById('webcam');
+  var canvas=_ccCanvas||document.getElementById('meshCanvas');
   var ctx=canvas.getContext('2d');
 
   function frame(){
     animFrame=requestAnimationFrame(frame);
     if(!cameraActive)return;
 
-    // Resize canvas if needed
-    if(canvas.width!==video.videoWidth&&video.videoWidth>0){
-      canvas.width=video.videoWidth;
-      canvas.height=video.videoHeight;
-    }
-
+    sizeMeshCanvas();
     var w=canvas.width,h=canvas.height;
     ctx.clearRect(0,0,w,h);
 
-    // FPS
+    // FPS bookkeeping
     frameCount++;
-    if(TRIAGE.active)TRIAGE.renderFrames++;   // accumulate frames for avg FPS during the exam
+    if(TRIAGE.active)TRIAGE.renderFrames++;
     var now=Date.now();
     if(now-lastFpsTime>=1000){
       fps=frameCount;frameCount=0;lastFpsTime=now;
-      if(TRIAGE.active){   // track FPS range only during an active exam
+      if(TRIAGE.active){
         if(DIAG.min_fps===null||fps<DIAG.min_fps)DIAG.min_fps=fps;
         if(DIAG.max_fps===null||fps>DIAG.max_fps)DIAG.max_fps=fps;
       }
-      if(CC_DEBUG)console.log('[CC] iris='+BUF.iris.length+' face='+(!!faceLandmarker)+' capturing='+TRIAGE.capturing+' featOK/s='+dbgFeatOK+' featNull/s='+dbgFeatNull+' fps='+fps);
+      if(CC_DEBUG)console.log('[CC] iris='+BUF.iris.length+' delegate='+DIAG.model_delegate+' vw='+video.videoWidth+' capturing='+TRIAGE.capturing+' featOK/s='+dbgFeatOK+' featNull/s='+dbgFeatNull+' fps='+fps);
       dbgFeatOK=0;dbgFeatNull=0;
     }
-    document.getElementById('camInfoText').textContent=
-      (facingMode==='user'?'Front':'Back')+' Camera • 478 landmarks • '+fps+' FPS';
 
-    // Run MediaPipe — time-throttled (~30fps) so detection runs continuously,
-    // independent of UI state and robust against video.currentTime stalls.
-    var features=null;
-    if(faceLandmarker&&video.readyState>=2&&(now-lastDetectMs)>=33){
-      lastDetectMs=now;
+    // Detect only on a NEW frame with real pixels.
+    var ready=faceLandmarker&&video.readyState>=2&&video.videoWidth>0;
+    if(ready && video.currentTime!==lastVideoTime){
+      lastVideoTime=video.currentTime;
+      var ts=performance.now(); if(ts<=lastDetectTs)ts=lastDetectTs+1; lastDetectTs=ts;
       try{
-        var results=faceLandmarker.detectForVideo(video,performance.now());
+        var results=faceLandmarker.detectForVideo(video,ts);
+        lastResults=results;
         if(results.faceLandmarks&&results.faceLandmarks.length>0){
           var lm=results.faceLandmarks[0];
-          features=extractFeatures(lm);
+          var features=extractFeatures(lm);
           dbgFeatOK++;
-          // Diagnostics: real face tracked (never set by the fallback mesh)
-          DIAG.face_detected=true;
-          DIAG.detectFrames++;
+          DIAG.face_detected=true; DIAG.detectFrames++;
           DIAG.irisSum += (lm.length>=478?10:(lm.length>468?(lm.length-468):0));
           captureBaseline(features);
 
-          // Blendshapes — capture tongueOut (and keep full map available)
           if(results.faceBlendshapes&&results.faceBlendshapes.length>0){
             BLEND={};
             var cats=results.faceBlendshapes[0].categories||[];
             for(var bi=0;bi<cats.length;bi++){BLEND[cats[bi].categoryName]=cats[bi].score;}
           }
-          // Head pose from facial transformation matrix → yaw/pitch/roll (degrees)
           if(results.facialTransformationMatrixes&&results.facialTransformationMatrixes.length>0){
             POSE=matrixToEuler(results.facialTransformationMatrixes[0].data);
           }
 
-          // Buffer iris positions
           pushBuf('iris',{Lx:features.Lx,Ly:features.Ly,Rx:features.Rx,Ry:features.Ry});
           pushBuf('mouth',features.mouthOpen);
           pushBuf('smile',features.smileAsym);
           pushBuf('jaw',features.jawW);
 
-          // Draw real landmarks
-          drawRealMesh(ctx,lm,w,h,features);
-
-          // Update live scores panel
           updateScoresPanel(features);
 
-          // Capture TRIAGE frame during an active capture window
-          if(TRIAGE.capturing&&features){
+          if(TRIAGE.capturing){
             TRIAGE.frames.push({
-              EAR:features.EAR,
-              smileAsym:features.smileAsym,
-              cn7asym:features.cn7asym,
-              mouthOpen:features.mouthOpen,
-              tongueOut:(BLEND.tongueOut||0),
-              headYaw:features.headYaw,
-              yawDeg:POSE.yaw, pitchDeg:POSE.pitch, rollDeg:POSE.roll,
-              t:performance.now()
+              EAR:features.EAR, smileAsym:features.smileAsym, cn7asym:features.cn7asym,
+              mouthOpen:features.mouthOpen, tongueOut:(BLEND.tongueOut||0), headYaw:features.headYaw,
+              yawDeg:POSE.yaw, pitchDeg:POSE.pitch, rollDeg:POSE.roll, t:performance.now()
             });
           }
-
-          // Capture attention tracking frame
           if(ATT.active&&features.gazeH!==undefined){
-            // Blink detection
             var earThresh=0.22;
-            if(features.EAR<earThresh&&!ATT.blinkInProgress){
-              ATT.blinkInProgress=true;
-            }else if(features.EAR>=earThresh&&ATT.blinkInProgress){
-              ATT.blinkCount++;
-              ATT.blinkInProgress=false;
-            }
-            // Use smoothed gaze offset from baseline — units now comparable to dot offset
+            if(features.EAR<earThresh&&!ATT.blinkInProgress){ATT.blinkInProgress=true;}
+            else if(features.EAR>=earThresh&&ATT.blinkInProgress){ATT.blinkCount++;ATT.blinkInProgress=false;}
             var sg=smoothGaze(features.gazeH,features.gazeV);
-            var gxOff=sg.h-(BASE.gazeH||0);
-            var gyOff=sg.v-(BASE.gazeV||0);
-            // Dot offset from center (-0.5 to 0.5)
-            var txOff=(ATT.dotX-0.5)*0.6; // scale to match gaze range
-            var tyOff=(ATT.dotY-0.5)*0.3;
             ATT.frames.push({
-              gx:gxOff, gy:gyOff,
-              tx:txOff, ty:tyOff,
-              blink:ATT.blinkInProgress,
-              t:performance.now()
+              gx:sg.h-(BASE.gazeH||0), gy:sg.v-(BASE.gazeV||0),
+              tx:(ATT.dotX-0.5)*0.6, ty:(ATT.dotY-0.5)*0.3,
+              blink:ATT.blinkInProgress, t:performance.now()
             });
           }
         }else{
-          dbgFeatNull++;            // detection ran but no face this frame
-          drawFallbackMesh(ctx,w,h);
+          dbgFeatNull++;
         }
       }catch(e){
-        dbgFeatNull++;
-        if(CC_DEBUG)console.warn('[CC] detect/extract threw:',e&&e.message);
-        if(TRIAGE.active)diagError('detect/extract: '+(e&&e.message));
-        drawFallbackMesh(ctx,w,h);
+        dbgFeatNull++; lastResults=null;
+        if(CC_DEBUG)console.warn('[CC] detect threw:',e&&e.message);
+        if(TRIAGE.active)diagError('detect: '+(e&&e.message));
       }
-      lastVideoTime=video.currentTime;
-    }else if(!faceLandmarker){
+    }
+
+    // DRAW every rAF (no flicker): mesh if we have a face, else the searching guide.
+    if(lastResults&&lastResults.faceLandmarks&&lastResults.faceLandmarks.length>0){
+      drawRealMesh(ctx,lastResults.faceLandmarks[0]);
+    }else{
       drawFallbackMesh(ctx,w,h);
     }
+
+    // Live on-screen diagnostic (so a phone test is self-explaining, no console needed).
+    var lock=!!(lastResults&&lastResults.faceLandmarks&&lastResults.faceLandmarks.length>0);
+    var ci=document.getElementById('camInfoText');
+    if(ci)ci.textContent=(DIAG.model_delegate||'load')+' · '+(video.videoWidth||0)+'×'+(video.videoHeight||0)+' · '+fps+'fps · '+(lock?'FACE ✓':'searching…');
   }
   frame();
 }
 
-// ── DRAW REAL MEDIAPIPE MESH ──
-// Renders the genuine FaceLandmarker tessellation + feature contours that TRACK the
-// real face (via MediaPipe DrawingUtils). No static template — every line follows landmarks.
-var _drawUtils=null;
-function getDrawUtils(ctx){
-  if(!_drawUtils&&visionModule&&visionModule.DrawingUtils){
-    try{_drawUtils=new visionModule.DrawingUtils(ctx);}catch(e){_drawUtils=null;}
+// ── DRAW REAL FACE MESH ──
+// Every point/line is mapped through coverMap() so it tracks the real face exactly over the
+// cover-cropped, mirrored video. Drawn manually (no DrawingUtils dependency) using the
+// FACE_LANDMARKS_* connection constants — robust across tasks-vision versions.
+function drawConn(ctx,lm,conns,color,lw){
+  if(!conns)return;
+  ctx.strokeStyle=color; ctx.lineWidth=lw; ctx.lineJoin='round'; ctx.beginPath();
+  for(var i=0;i<conns.length;i++){
+    var c=conns[i];
+    var ai=(c&&c.start!==undefined)?c.start:c[0];
+    var bi=(c&&c.end!==undefined)?c.end:c[1];
+    var a=lm[ai], b=lm[bi];
+    if(!a||!b)continue;
+    var pa=coverMap(a), pb=coverMap(b);
+    ctx.moveTo(pa.x,pa.y); ctx.lineTo(pb.x,pb.y);
   }
-  return _drawUtils;
+  ctx.stroke();
 }
-function drawRealMesh(ctx,lm,w,h,f){
+function drawRealMesh(ctx,lm){
   var FL=visionModule&&visionModule.FaceLandmarker;
-  var du=getDrawUtils(ctx);
-  if(du&&FL&&FL.FACE_LANDMARKS_TESSELATION){
-    try{
-      // Fine triangulated mesh — the recognizable "AI face scan" look, brand blue, low opacity
-      du.drawConnectors(lm,FL.FACE_LANDMARKS_TESSELATION,{color:'rgba(30,136,229,0.16)',lineWidth:0.6});
-      // Feature contours that hug the face
-      du.drawConnectors(lm,FL.FACE_LANDMARKS_FACE_OVAL,{color:'rgba(144,202,249,0.85)',lineWidth:2});
-      du.drawConnectors(lm,FL.FACE_LANDMARKS_LEFT_EYE,{color:'rgba(30,136,229,0.9)',lineWidth:1.4});
-      du.drawConnectors(lm,FL.FACE_LANDMARKS_RIGHT_EYE,{color:'rgba(30,136,229,0.9)',lineWidth:1.4});
-      du.drawConnectors(lm,FL.FACE_LANDMARKS_LEFT_EYEBROW,{color:'rgba(144,202,249,0.7)',lineWidth:1.2});
-      du.drawConnectors(lm,FL.FACE_LANDMARKS_RIGHT_EYEBROW,{color:'rgba(144,202,249,0.7)',lineWidth:1.2});
-      du.drawConnectors(lm,FL.FACE_LANDMARKS_LIPS,{color:'rgba(30,136,229,0.9)',lineWidth:1.5});
-      // Irises highlighted in clinical gold — the tracked gaze targets
-      du.drawConnectors(lm,FL.FACE_LANDMARKS_LEFT_IRIS,{color:'rgba(212,168,83,0.95)',lineWidth:2});
-      du.drawConnectors(lm,FL.FACE_LANDMARKS_RIGHT_IRIS,{color:'rgba(212,168,83,0.95)',lineWidth:2});
-    }catch(e){drawManualMesh(ctx,lm,w,h);}
-  }else{
-    drawManualMesh(ctx,lm,w,h);
-  }
-  // Iris centroids as solid dots (gold) — visible even at small mesh scale
-  if(lm.length>468){
-    [lm[468],lm[473]].forEach(function(p){
-      ctx.beginPath();ctx.arc(p.x*w,p.y*h,3,0,Math.PI*2);
-      ctx.fillStyle='#D4A853';ctx.fill();
-    });
-  }
-}
-
-// Manual fallback mesh — only if DrawingUtils is unavailable. Still tracks the real face (no static oval).
-function drawManualMesh(ctx,lm,w,h){
-  ctx.fillStyle='rgba(30,136,229,0.55)';
+  var ls=_dpr||1;
+  // Fine point cloud — cheap, gives the "AI scan" feel and confirms tracking density.
+  ctx.fillStyle='rgba(30,136,229,0.5)';
   for(var i=0;i<Math.min(lm.length,468);i++){
-    ctx.beginPath();ctx.arc(lm[i].x*w,lm[i].y*h,1.1,0,Math.PI*2);ctx.fill();
+    var p=coverMap(lm[i]);
+    ctx.beginPath();ctx.arc(p.x,p.y,1.1*ls,0,Math.PI*2);ctx.fill();
   }
+  // Feature contours that hug the face (fast — far fewer lines than full tessellation).
+  if(FL&&FL.FACE_LANDMARKS_FACE_OVAL){
+    drawConn(ctx,lm,FL.FACE_LANDMARKS_FACE_OVAL,'rgba(144,202,249,0.85)',2*ls);
+    drawConn(ctx,lm,FL.FACE_LANDMARKS_LEFT_EYE,'rgba(30,136,229,0.9)',1.4*ls);
+    drawConn(ctx,lm,FL.FACE_LANDMARKS_RIGHT_EYE,'rgba(30,136,229,0.9)',1.4*ls);
+    drawConn(ctx,lm,FL.FACE_LANDMARKS_LEFT_EYEBROW,'rgba(144,202,249,0.7)',1.2*ls);
+    drawConn(ctx,lm,FL.FACE_LANDMARKS_RIGHT_EYEBROW,'rgba(144,202,249,0.7)',1.2*ls);
+    drawConn(ctx,lm,FL.FACE_LANDMARKS_LIPS,'rgba(30,136,229,0.9)',1.5*ls);
+    drawConn(ctx,lm,FL.FACE_LANDMARKS_LEFT_IRIS,'rgba(212,168,83,0.95)',2*ls);
+    drawConn(ctx,lm,FL.FACE_LANDMARKS_RIGHT_IRIS,'rgba(212,168,83,0.95)',2*ls);
+  }
+  // Iris centroids as solid gold dots.
   if(lm.length>468){
-    [lm[468],lm[473]].forEach(function(p){
-      ctx.beginPath();ctx.arc(p.x*w,p.y*h,3,0,Math.PI*2);ctx.fillStyle='#D4A853';ctx.fill();
+    [lm[468],lm[473]].forEach(function(q){
+      var p=coverMap(q);
+      ctx.beginPath();ctx.arc(p.x,p.y,3*ls,0,Math.PI*2);ctx.fillStyle='#D4A853';ctx.fill();
     });
   }
 }
@@ -1431,22 +1502,23 @@ function drawManualMesh(ctx,lm,w,h){
 var fallbackFrame=0;
 function drawFallbackMesh(ctx,w,h){
   fallbackFrame++;
+  var ls=_dpr||1;
   var cx=w/2, cy=h*0.46;
   var rx=Math.min(w*0.30,h*0.26), ry=rx*1.28;   // upright face-shaped oval
   var pulse=0.5+0.5*Math.sin(fallbackFrame*0.05);
 
   // Pulsing dashed oval guide
   ctx.save();
-  ctx.setLineDash([14,12]);
+  ctx.setLineDash([14*ls,12*ls]);
   ctx.lineDashOffset=-fallbackFrame*0.7;
   ctx.strokeStyle='rgba(144,202,249,'+(0.40+0.30*pulse)+')';
-  ctx.lineWidth=3;
+  ctx.lineWidth=3*ls;
   ctx.beginPath();ctx.ellipse(cx,cy,rx,ry,0,0,Math.PI*2);ctx.stroke();
   ctx.restore();
 
   // Corner brackets framing the capture region
   var bx=rx*1.18, by=ry*1.04, L=Math.min(w,h)*0.05;
-  ctx.strokeStyle='rgba(30,136,229,0.92)';ctx.lineWidth=4;ctx.lineCap='round';
+  ctx.strokeStyle='rgba(30,136,229,0.92)';ctx.lineWidth=4*ls;ctx.lineCap='round';
   [[cx-bx,cy-by,1,1],[cx+bx,cy-by,-1,1],[cx-bx,cy+by,1,-1],[cx+bx,cy+by,-1,-1]].forEach(function(c){
     ctx.beginPath();
     ctx.moveTo(c[0]+c[2]*L,c[1]);ctx.lineTo(c[0],c[1]);ctx.lineTo(c[0],c[1]+c[3]*L);
@@ -1454,14 +1526,15 @@ function drawFallbackMesh(ctx,w,h){
   });
 
   // Scan line sweeping inside the oval
-  var scanY=cy-ry+((fallbackFrame*4)%(ry*2));
-  var grad=ctx.createLinearGradient(0,scanY-22,0,scanY+22);
+  var sw=22*ls;
+  var scanY=cy-ry+((fallbackFrame*4*ls)%(ry*2));
+  var grad=ctx.createLinearGradient(0,scanY-sw,0,scanY+sw);
   grad.addColorStop(0,'rgba(30,136,229,0)');
   grad.addColorStop(0.5,'rgba(30,136,229,0.55)');
   grad.addColorStop(1,'rgba(30,136,229,0)');
   ctx.save();
   ctx.beginPath();ctx.ellipse(cx,cy,rx,ry,0,0,Math.PI*2);ctx.clip();
-  ctx.fillStyle=grad;ctx.fillRect(cx-rx,scanY-22,rx*2,44);
+  ctx.fillStyle=grad;ctx.fillRect(cx-rx,scanY-sw,rx*2,sw*2);
   ctx.restore();
 }
 
