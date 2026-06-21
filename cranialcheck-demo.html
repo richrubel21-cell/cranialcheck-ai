@@ -511,13 +511,14 @@ function resetDiagForExam(){
   DIAG.errors=[];
 }
 
+// Six distinct actions — each step asks the subject to do something visibly different.
 var TRIAGE_STEPS=[
-  {id:'calib',  emoji:'🎯', name:'Calibrating',        bannerSub:'Hold still — 2 seconds',                 title:'Hold still, looking at camera',                         sub:'Step 1 · Calibrating baseline',     dur:2000},
-  {id:'perclos',emoji:'👁️', name:'Alertness Screen',   bannerSub:'Keep eyes open — 30 seconds',            title:'Keep your eyes open and look at the camera',            sub:'Step 2 · PERCLOS alertness window', dur:30000},
-  {id:'cn7',    emoji:'😐', name:'Facial Symmetry',    bannerSub:'Relax your face and look at camera',      title:'Relax your face and look at the camera',                sub:'Step 3 · CN VII resting symmetry',  dur:10000},
-  {id:'gcs',    emoji:'⬆️', name:'Eye Opening',        bannerSub:'Open your eyes wide — 5 seconds',         title:'Open your eyes wide',                                   sub:'Step 4 · GCS eye-opening proxy',    dur:5000},
-  {id:'tongue', emoji:'👅', name:'Tongue Protrusion',  bannerSub:'Stick tongue out and hold — 10 seconds',  title:'Stick your tongue out as far as you can and hold it',    sub:'Step 5 · CN XII tongue protrusion', dur:10000},
-  {id:'head',   emoji:'🧭', name:'Head Stability',     bannerSub:'Hold your head perfectly still — 10 sec', title:'Look at the camera and hold your head perfectly still',  sub:'Step 6 · Head pose drift',          dur:10000}
+  {id:'calib',  emoji:'🎯', name:'Calibrating',     bannerSub:'Hold still — getting baseline',  title:'Hold still and look at the camera',             sub:'Step 1 of 6 · Baseline calibration',      dur:1800},
+  {id:'perclos',emoji:'👁️', name:'Alertness',       bannerSub:'Eyes open, blink normally',      title:'Keep your eyes open and blink normally',        sub:'Step 2 of 6 · Alertness (PERCLOS)',       dur:8000},
+  {id:'cn7',    emoji:'😀', name:'Smile',           bannerSub:'Big smile — show your teeth',     title:'Smile as big as you can — show your teeth',     sub:'Step 3 of 6 · Facial symmetry (CN VII)',  dur:5000},
+  {id:'gcs',    emoji:'🤨', name:'Eyebrow Raise',   bannerSub:'Raise brows, eyes wide',         title:'Raise your eyebrows and open your eyes wide',   sub:'Step 4 of 6 · Eye-opening (GCS proxy)',   dur:4000},
+  {id:'tongue', emoji:'👅', name:'Tongue Out',      bannerSub:'Tongue straight out, hold it',   title:'Stick your tongue straight out and hold it',    sub:'Step 5 of 6 · Tongue protrusion (CN XII)',dur:5000},
+  {id:'head',   emoji:'🧭', name:'Head Steady',     bannerSub:'Head still, eyes forward',       title:'Hold your head perfectly still, eyes forward', sub:'Step 6 of 6 · Head stability',            dur:5000}
 ];
 
 // ── ASSESSMENT DATA ──
@@ -1436,7 +1437,7 @@ function startRenderLoop(){
           if(TRIAGE.capturing){
             TRIAGE.frames.push({
               EAR:features.EAR, smileAsym:features.smileAsym, cn7asym:features.cn7asym,
-              mouthOpen:features.mouthOpen, tongueOut:(BLEND.tongueOut||0), headYaw:features.headYaw,
+              mouthOpen:features.mouthOpen, mouthSpread:features.mouthSpread, tongueOut:(BLEND.tongueOut||0), headYaw:features.headYaw,
               yawDeg:POSE.yaw, pitchDeg:POSE.pitch, rollDeg:POSE.roll, t:performance.now()
             });
           }
@@ -2123,6 +2124,7 @@ function scoreCalib(frames){
   TRIAGE.baseYaw=mean(frames.map(function(f){return f.headYaw;}))||0;
   TRIAGE.baseAsym=mean(frames.map(function(f){return f.cn7asym;}))||0;
   TRIAGE.baseMouth=mean(frames.map(function(f){return f.mouthOpen;}))||0;
+  TRIAGE.baseSpread=mean(frames.map(function(f){return f.mouthSpread||0;}))||0;
   var earSD=stdDev(frames.map(function(f){return f.EAR;}));
   var yawSD=stdDev(frames.map(function(f){return f.yawDeg;}));
   TRIAGE.calibStability=clamp(1-(earSD/0.04 + yawSD/4)/2, 0, 1);
@@ -2139,13 +2141,23 @@ function scorePerclos(frames){
   var label=perclos<=0.15?'Alert':perclos<=0.30?'Mild drowsiness':'Reduced alertness';
   return{score:clamp(1-perclos/0.5,0,1), value:pct, metric:pct+'% eye-closure', label:label, flag:flag};
 }
-// CN VII resting asymmetry normalized to IOD. Flag if > 0.07 (7%).
+// CN VII facial symmetry — ACTIVE smile. Confirm a smile happened (mouth widened vs baseline),
+// then measure corner-lift asymmetry during the smile (movement asymmetry is the CN VII flag, ref §2).
 function scoreCN7(frames){
   if(frames.length<5)return{score:0,label:'No data',flag:'warn',metric:'insufficient tracking'};
-  var asym=mean(frames.map(function(f){return f.cn7asym;}));
-  var flag=asym<0.045?'good':asym<=0.07?'warn':'bad';
-  var label=asym<0.045?'Symmetric at rest':asym<=0.07?'Borderline asymmetry':'Asymmetry flagged';
-  return{score:clamp(1-asym/0.14,0,1), value:asym, metric:'rest asym '+(asym*100).toFixed(1)+'% IOD', label:label, flag:flag};
+  var base=TRIAGE.baseSpread||0;
+  var maxSpread=Math.max.apply(null,frames.map(function(f){return f.mouthSpread||0;}));
+  var widen=maxSpread-base;                                  // how much the mouth widened
+  if(widen<0.05){                                            // no real smile detected
+    return{score:0.5,label:'No smile detected',flag:'warn',metric:'try a bigger smile (widening '+(widen*100).toFixed(0)+'%)'};
+  }
+  // Asymmetry measured on the frames where they were actually smiling (top 40% widening).
+  var thr=base+widen*0.6;
+  var smiling=frames.filter(function(f){return (f.mouthSpread||0)>=thr;});
+  var asym=mean((smiling.length?smiling:frames).map(function(f){return f.smileAsym;}));
+  var flag=asym<0.06?'good':asym<=0.11?'warn':'bad';
+  var label=asym<0.06?'Symmetric smile':asym<=0.11?'Mild smile asymmetry':'Smile asymmetry flagged';
+  return{score:clamp(1-asym/0.20,0,1), value:asym, metric:'smile asym '+(asym*100).toFixed(1)+'% IOD', label:label, flag:flag};
 }
 // GCS eye-opening proxy. E4 if peak EAR > 80% baseline, E3 if EAR > 0.12, else E1.
 function scoreGCS(frames){
@@ -2157,16 +2169,18 @@ function scoreGCS(frames){
   var label=e===4?'Eyes open / widen (E4)':e===3?'Reduced eye opening (E3)':'Minimal eye opening (E1)';
   return{score:clamp(e/4,0,1), value:e, metric:'E'+e+' · peak EAR '+maxEAR.toFixed(2), label:label, flag:flag, e:e};
 }
-// CN XII tongue protrusion — tongueOut blendshape gate (>0.4); flag if no protrusion (maxMouth < 0.20).
+// CN XII tongue protrusion. MediaPipe's tongueOut blendshape is unreliable across devices,
+// so mouth APERTURE is the primary protrusion proxy (ref §4 uses lip-aperture 13/14), with the
+// tongueOut blendshape as a bonus confirmation signal.
 function scoreTongue(frames){
   if(frames.length<5)return{score:0,label:'No data',flag:'warn',metric:'insufficient tracking'};
   var maxTongue=Math.max.apply(null,frames.map(function(f){return f.tongueOut||0;}));
   var maxMouth=Math.max.apply(null,frames.map(function(f){return f.mouthOpen;}));
   var flag,label,score;
-  if(maxTongue>0.4){flag='good';label='Protrusion confirmed';score=clamp(0.70+maxTongue*0.30,0,1);}
-  else if(maxMouth>=0.20){flag='warn';label='Mouth opened, tongue not detected';score=clamp(maxMouth/0.4,0,1)*0.6;}
-  else{flag='bad';label='No protrusion';score=clamp(maxMouth/0.4,0,1)*0.4;}
-  return{score:score, value:maxMouth, tongueOut:maxTongue, metric:'tongueOut '+maxTongue.toFixed(2)+' · aperture '+maxMouth.toFixed(2), label:label, flag:flag};
+  if(maxTongue>0.25 || maxMouth>=0.45){flag='good';label='Tongue protrusion detected';score=clamp(0.80+maxTongue*0.20,0,1);}
+  else if(maxMouth>=0.22){flag='warn';label='Mouth opened — protrude further';score=0.55;}
+  else{flag='bad';label='No protrusion';score=clamp(maxMouth/0.45,0,1)*0.4;}
+  return{score:score, value:maxMouth, tongueOut:maxTongue, metric:'aperture '+maxMouth.toFixed(2)+' · tongueOut '+maxTongue.toFixed(2), label:label, flag:flag};
 }
 // Head pose drift — SD of yaw/pitch/roll (degrees) over the window. Flag if any axis SD > 3°.
 function scoreHead(frames){
