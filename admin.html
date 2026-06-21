@@ -193,7 +193,12 @@ footer{border-top:1px solid var(--border);background:#fff;padding:22px 0;margin-
 <script>
 const SUPABASE_URL = 'https://rtklrkslujbbprkpyghc.supabase.co';
 const SUPABASE_ANON = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InJ0a2xya3NsdWpiYnBya3B5Z2hjIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODIwNDUzMjYsImV4cCI6MjA5NzYyMTMyNn0.IK8uZKlnThrLnMH_obh_XCI8hF_wcKkRNxmUtKJE0tI';
-const sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON);
+// Defensive init: a blocked CDN must not kill the page — the gate should still load and show a clean error.
+const sb = (function(){
+  try{ if(typeof supabase!=='undefined' && supabase && supabase.createClient){ return supabase.createClient(SUPABASE_URL, SUPABASE_ANON); } }
+  catch(e){ console.warn('[CC] Supabase init failed:', e && e.message); }
+  return null;
+})();
 
 // ── ACCESS GATE ──
 function checkGate(){
@@ -250,6 +255,7 @@ var PAGE_SIZE=20;
 
 async function loadData(){
   var c=document.getElementById('dashContent');
+  if(!sb){ c.innerHTML='<div class="state err"><div class="state-big">Supabase library failed to load.</div><div>Check the connection and refresh the page.</div></div>'; return; }
   c.innerHTML='<div class="state"><div class="state-big">Loading…</div><div>Fetching exam records from Supabase.</div></div>';
   try{
     var res=await sb.from('exams').select('*').order('created_at',{ascending:false});

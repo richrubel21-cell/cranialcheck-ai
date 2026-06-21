@@ -384,7 +384,13 @@ body{font-family:var(--f);background:#000;-webkit-font-smoothing:antialiased}
 <script>
 const SUPABASE_URL = 'https://rtklrkslujbbprkpyghc.supabase.co';
 const SUPABASE_ANON = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InJ0a2xya3NsdWpiYnBya3B5Z2hjIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODIwNDUzMjYsImV4cCI6MjA5NzYyMTMyNn0.IK8uZKlnThrLnMH_obh_XCI8hF_wcKkRNxmUtKJE0tI';
-const sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON);
+// Defensive init: if the Supabase CDN is blocked/unreachable, the exam must still run (just won't save).
+const sb = (function(){
+  try{ if(typeof supabase!=='undefined' && supabase && supabase.createClient){ return supabase.createClient(SUPABASE_URL, SUPABASE_ANON); } }
+  catch(e){ console.warn('[CC] Supabase init failed:', e && e.message); }
+  console.warn('[CC] Supabase unavailable — exam will run but results will not be saved.');
+  return null;
+})();
 'use strict';
 
 // ═══════════════════════════════════════════════════
@@ -2225,6 +2231,7 @@ function exportReport(){
 }
 
 async function saveExamToSupabase(result) {
+  if(!sb){ console.warn('[CC] No Supabase client — skipping save (exam still ran).'); return; }
   try {
     var o = result.overall;
     var d = result.domains;
