@@ -1339,6 +1339,31 @@ function scoreToDeg(s,testId){
   return Math.round(s*max)+'°';
 }
 
+// ── ONE-EURO LANDMARK SMOOTHING (Casiez et al., CHI 2012) ──
+// Removes landmark jitter at rest without adding lag on fast movement. Applied to every
+// landmark x/y (normalized) right after detection, so scoring AND the drawn mesh are stable.
+// Spec 17.3 params: minCutoff=1.0, beta=0.1, dCutoff=1.0. Time in SECONDS (critical).
+function _LowPass(){ this.s=null; this.init=false; }
+_LowPass.prototype.filter=function(v,a){ this.s=this.init?(a*v+(1-a)*this.s):(v); this.init=true; return this.s; };
+function OneEuro(minCut,beta,dCut){ this.mc=minCut;this.b=beta;this.dc=dCut;this.x=new _LowPass();this.dx=new _LowPass();this.lt=null;this.lr=null; }
+OneEuro.prototype._alpha=function(c,dt){ var tau=1/(2*Math.PI*c); return 1/(1+tau/dt); };
+OneEuro.prototype.filter=function(v,t){
+  var dt=(this.lt!=null&&t>this.lt)?(t-this.lt):(1/30); this.lt=t;       // real dt; guard dup/backward
+  var dv=(this.lr!=null)?(v-this.lr)/dt:0; this.lr=v;
+  var edv=this.dx.filter(dv,this._alpha(this.dc,dt));
+  var cut=this.mc + this.b*Math.abs(edv);
+  return this.x.filter(v,this._alpha(cut,dt));
+};
+var _euroX=[], _euroY=[];
+function smoothLandmarks(lm,tSec){
+  for(var i=0;i<lm.length;i++){
+    if(!_euroX[i]){ _euroX[i]=new OneEuro(1.0,0.1,1.0); _euroY[i]=new OneEuro(1.0,0.1,1.0); }
+    lm[i].x=_euroX[i].filter(lm[i].x,tSec);
+    lm[i].y=_euroY[i].filter(lm[i].y,tSec);
+  }
+}
+function resetEuro(){ _euroX=[]; _euroY=[]; }
+
 // ── RENDER LOOP ──
 // Pattern (multi-source consensus): VIDEO mode, detect once per NEW video frame
 // (currentTime dedup) with a strictly-increasing timestamp, but DRAW every rAF so the
@@ -1385,6 +1410,7 @@ function startRenderLoop(){
         lastResults=results;
         if(results.faceLandmarks&&results.faceLandmarks.length>0){
           var lm=results.faceLandmarks[0];
+          smoothLandmarks(lm, ts/1000);          // OneEuro de-jitter (in place) before scoring + draw
           var features=extractFeatures(lm);
           dbgFeatOK++;
           DIAG.face_detected=true; DIAG.detectFrames++;
@@ -1803,6 +1829,7 @@ function resetExam(){
   TRIAGE={active:false,capturing:false,frames:[],baseEAR:null,baseYaw:null,baseAsym:null,baseMouth:null,result:null,
           calibStability:0,lightingScore:0,capturedFrames:0,expectedFrames:0,stepsComplete:0,startMs:0,renderFrames:0};
   GAZE_SMOOTH={h:[],v:[],len:3};
+  resetEuro();
   if(attDotEl)attDotEl.style.display='none';
   hideResults();
   document.getElementById('alertBox').style.display='none';
