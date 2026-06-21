@@ -70,7 +70,7 @@ body{font-family:var(--f);background:#000;-webkit-font-smoothing:antialiased}
 .start-icon{font-size:64px}
 .start-title{font-size:24px;font-weight:800;color:#0A1E38;font-family:var(--f)}
 .start-sub{font-size:14px;color:#4A5B73;line-height:1.7;max-width:300px}
-.start-btn{padding:16px 36px;border-radius:14px;background:linear-gradient(135deg,#1E88E5,#1565C0);color:#fff;font-weight:800;font-size:15px;border:none;cursor:pointer;font-family:var(--f);box-shadow:0 4px 24px rgba(30,136,229,.5);letter-spacing:.3px}
+.start-btn{width:100%;max-width:340px;padding:18px 36px;border-radius:14px;background:linear-gradient(135deg,#1E88E5,#1565C0);color:#fff;font-weight:800;font-size:16px;border:none;cursor:pointer;font-family:var(--f);box-shadow:0 8px 28px rgba(30,136,229,.45);letter-spacing:.3px}
 
 /* ── STATUS BANNER ── */
 .status-banner{position:absolute;top:112px;left:12px;right:12px;background:rgba(255,255,255,.92);border:1px solid rgba(30,136,229,.3);border-radius:14px;padding:12px 18px;text-align:center;box-shadow:0 4px 20px rgba(10,30,56,.12);z-index:50;pointer-events:auto;max-width:calc(100vw - 24px);backdrop-filter:blur(8px);color:#0A1E38}
@@ -334,7 +334,7 @@ body{font-family:var(--f);background:#000;-webkit-font-smoothing:antialiased}
   </div>
 
   <!-- ALERT -->
-  <div class="alert-box" id="alertBox" style="display:none" onclick="openSheet('cam')">
+  <div class="alert-box" id="alertBox" style="display:none">
     <div style="font-size:18px;flex-shrink:0">🚨</div>
     <div>
       <div class="alert-title" id="alertTitle">Assessment findings flagged</div>
@@ -348,18 +348,10 @@ body{font-family:var(--f);background:#000;-webkit-font-smoothing:antialiased}
     <span id="camInfoText">Front Camera • 478 landmarks • 30 FPS</span>
   </div>
 
-  <!-- FAB -->
-  <div class="fab-wrap">
+  <!-- FAB — hidden during TRIAGE; shown after results to re-open them (legacy sheets removed) -->
+  <div class="fab-wrap" id="fabWrap" style="display:none">
     <div class="fab-ring"></div><div class="fab-ring2"></div>
-    <div class="fab-items" id="fabItems">
-      <div class="fab-item"><div class="fi-label">Cranial Nerves</div><button class="fi-btn" style="background:rgba(124,58,237,.15);color:#7c3aed" onclick="openSheet('cn')">👁️</button></div>
-      <div class="fab-item"><div class="fi-label">GCS Score</div><button class="fi-btn" style="background:rgba(37,99,235,.15);color:#2563eb" onclick="openSheet('gcs')">🧠</button></div>
-      <div class="fab-item"><div class="fi-label">Delirium</div><button class="fi-btn" id="delBtn" style="background:rgba(220,38,38,.15);color:#dc2626" onclick="openSheet('cam')">🔴</button></div>
-      <div class="fab-item"><div class="fi-label">Frailty & Fall Risk</div><button class="fi-btn" style="background:rgba(217,119,6,.15);color:#d97706" onclick="openSheet('fr')">🦴</button></div>
-      <div class="fab-item"><div class="fi-label">Speech Test</div><button class="fi-btn" style="background:rgba(30,136,229,.15);color:#1E88E5" onclick="openSheet('speech')">🗣️</button></div>
-      <div class="fab-item"><div class="fi-label">Patient Info</div><button class="fi-btn" style="background:rgba(30,136,229,.15);color:#1E88E5" onclick="openSheet('info')">👤</button></div>
-    </div>
-    <button class="fab" id="fab" onclick="toggleFab()">
+    <button class="fab" id="fab" onclick="showResults()">
       <div class="fab-icon">📊</div><div>See Results</div>
     </button>
   </div>
@@ -443,14 +435,17 @@ var BASE={
 };
 
 // ── TRIAGE MODE STATE (6-step screen) ──
-var TRIAGE={active:false, capturing:false, frames:[], baseEAR:null, baseYaw:null, baseAsym:null, baseMouth:null, result:null};
+var TRIAGE={active:false, capturing:false, frames:[], baseEAR:null, baseYaw:null, baseAsym:null, baseMouth:null, result:null,
+            calibStability:0, lightingScore:0, capturedFrames:0, expectedFrames:0, stepsComplete:0};
+var BLEND={};                                   // latest face blendshape scores
+var POSE={yaw:0,pitch:0,roll:0};                // latest head pose (degrees)
 var TRIAGE_STEPS=[
-  {id:'calib',  emoji:'🎯', title:'Hold still, looking at camera',                              sub:'Step 1 · Calibrating baseline',          dur:2000},
-  {id:'perclos',emoji:'👁️', title:'Keep your eyes open and look at the camera',                  sub:'Step 2 · PERCLOS alertness window',      dur:30000},
-  {id:'cn7',    emoji:'😐', title:'Relax your face and look at the camera',                       sub:'Step 3 · CN VII resting symmetry',       dur:10000},
-  {id:'gcs',    emoji:'⬆️', title:'Open your eyes wide',                                          sub:'Step 4 · GCS eye-opening proxy',         dur:5000},
-  {id:'tongue', emoji:'👅', title:'Stick your tongue out as far as you can and hold it',          sub:'Step 5 · CN XII tongue protrusion',      dur:10000},
-  {id:'head',   emoji:'🧭', title:'Look at the camera and hold your head perfectly still',        sub:'Step 6 · Head pose drift',               dur:10000}
+  {id:'calib',  emoji:'🎯', name:'Calibrating',        bannerSub:'Hold still — 2 seconds',                 title:'Hold still, looking at camera',                         sub:'Step 1 · Calibrating baseline',     dur:2000},
+  {id:'perclos',emoji:'👁️', name:'Alertness Screen',   bannerSub:'Keep eyes open — 30 seconds',            title:'Keep your eyes open and look at the camera',            sub:'Step 2 · PERCLOS alertness window', dur:30000},
+  {id:'cn7',    emoji:'😐', name:'Facial Symmetry',    bannerSub:'Relax your face and look at camera',      title:'Relax your face and look at the camera',                sub:'Step 3 · CN VII resting symmetry',  dur:10000},
+  {id:'gcs',    emoji:'⬆️', name:'Eye Opening',        bannerSub:'Open your eyes wide — 5 seconds',         title:'Open your eyes wide',                                   sub:'Step 4 · GCS eye-opening proxy',    dur:5000},
+  {id:'tongue', emoji:'👅', name:'Tongue Protrusion',  bannerSub:'Stick tongue out and hold — 10 seconds',  title:'Stick your tongue out as far as you can and hold it',    sub:'Step 5 · CN XII tongue protrusion', dur:10000},
+  {id:'head',   emoji:'🧭', name:'Head Stability',     bannerSub:'Hold your head perfectly still — 10 sec', title:'Look at the camera and hold your head perfectly still',  sub:'Step 6 · Head pose drift',          dur:10000}
 ];
 
 // ── ASSESSMENT DATA ──
@@ -595,7 +590,7 @@ async function initCamera(){
     if(stream)stream.getTracks().forEach(t=>t.stop());
     stream=await navigator.mediaDevices.getUserMedia({
       video:{facingMode:facingMode,width:{ideal:1280},height:{ideal:720},frameRate:{ideal:30}},
-      audio:false
+      audio:{echoCancellation:true,noiseSuppression:true,autoGainControl:true}
     });
     var video=document.getElementById('webcam');
     var canvas=document.getElementById('meshCanvas');
@@ -961,6 +956,11 @@ function extractFeatures(l){
   var liftR=(mTop.y-mR.y)/Math.max(IOD,0.001);
   var smileAsym=Math.abs(liftL-liftR);
 
+  // CN VII resting asymmetry — mouth corners (61,291) vs brows (70,300), normalized to IOD (33↔263)
+  var leftDrop=(l[61].y-l[70].y);    // mouth corner relative to brow, one side
+  var rightDrop=(l[291].y-l[300].y); // mouth corner relative to brow, other side
+  var cn7asym=Math.abs(leftDrop-rightDrop)/Math.max(IOD,0.001);
+
   // Jaw width proxy (CN V)
   var jawW=dist(l[234],l[454]);
 
@@ -990,7 +990,7 @@ function extractFeatures(l){
   var gazeV=(vR+vL)/2;
 
   return{irisL,irisR,Lx,Ly,Rx,Ry,IOD,mouthOpen,mouthSpread,
-         liftL,liftR,smileAsym,jawW,headYaw,mTop,mBot,mL,mR,
+         liftL,liftR,smileAsym,cn7asym,jawW,headYaw,mTop,mBot,mL,mR,
          EAR,gazeH,gazeV};
 }
 
@@ -1163,6 +1163,17 @@ function startRenderLoop(){
           features=extractFeatures(lm);
           captureBaseline(features);
 
+          // Blendshapes — capture tongueOut (and keep full map available)
+          if(results.faceBlendshapes&&results.faceBlendshapes.length>0){
+            BLEND={};
+            var cats=results.faceBlendshapes[0].categories||[];
+            for(var bi=0;bi<cats.length;bi++){BLEND[cats[bi].categoryName]=cats[bi].score;}
+          }
+          // Head pose from facial transformation matrix → yaw/pitch/roll (degrees)
+          if(results.facialTransformationMatrixes&&results.facialTransformationMatrixes.length>0){
+            POSE=matrixToEuler(results.facialTransformationMatrixes[0].data);
+          }
+
           // Buffer iris positions
           pushBuf('iris',{Lx:features.Lx,Ly:features.Ly,Rx:features.Rx,Ry:features.Ry});
           pushBuf('mouth',features.mouthOpen);
@@ -1180,8 +1191,11 @@ function startRenderLoop(){
             TRIAGE.frames.push({
               EAR:features.EAR,
               smileAsym:features.smileAsym,
+              cn7asym:features.cn7asym,
               mouthOpen:features.mouthOpen,
+              tongueOut:(BLEND.tongueOut||0),
               headYaw:features.headYaw,
+              yawDeg:POSE.yaw, pitchDeg:POSE.pitch, rollDeg:POSE.roll,
               t:performance.now()
             });
           }
@@ -1226,8 +1240,8 @@ function startRenderLoop(){
 
 // ── DRAW REAL MEDIAPIPE MESH ──
 function drawRealMesh(ctx,lm,w,h,f){
-  // Draw all 468 landmarks as dots
-  ctx.fillStyle='rgba(255,255,255,0.6)';
+  // Draw all 468 landmarks as dots — Clinical Blue for visibility + brand
+  ctx.fillStyle='rgba(30,136,229,0.6)';
   for(var i=0;i<Math.min(lm.length,468);i++){
     var p=lm[i];
     ctx.beginPath();
@@ -1238,19 +1252,19 @@ function drawRealMesh(ctx,lm,w,h,f){
   // Face oval
   ctx.beginPath();
   ctx.ellipse(0.5*w,0.50*h,w*0.36,h*0.30,0,0,Math.PI*2);
-  ctx.strokeStyle='rgba(255,255,255,0.9)';
+  ctx.strokeStyle='rgba(30,136,229,0.55)';
   ctx.lineWidth=2;
   ctx.stroke();
 
   // Eye boxes
   if(lm[33]&&lm[133]){
     var elx=lm[33].x*w,erx=lm[133].x*w,ey=(lm[33].y+lm[159].y)/2*h;
-    ctx.strokeStyle='rgba(255,255,255,0.85)';ctx.lineWidth=1.5;
+    ctx.strokeStyle='rgba(30,136,229,0.7)';ctx.lineWidth=1.5;
     ctx.strokeRect(elx,ey-h*0.03,erx-elx,h*0.06);
   }
   if(lm[263]&&lm[362]){
     var elx2=lm[263].x*w,erx2=lm[362].x*w,ey2=(lm[263].y+lm[386].y)/2*h;
-    ctx.strokeStyle='rgba(255,255,255,0.85)';ctx.lineWidth=1.5;
+    ctx.strokeStyle='rgba(30,136,229,0.7)';ctx.lineWidth=1.5;
     ctx.strokeRect(elx2,ey2-h*0.03,erx2-elx2,h*0.06);
   }
 
@@ -1259,25 +1273,25 @@ function drawRealMesh(ctx,lm,w,h,f){
     var mx1=lm[61].x*w,mx2=lm[291].x*w;
     var my1=lm[13].y*h,my2=lm[14].y*h;
     var mPad=h*0.02;
-    ctx.strokeStyle='rgba(255,255,255,0.7)';ctx.lineWidth=1.5;
+    ctx.strokeStyle='rgba(30,136,229,0.6)';ctx.lineWidth=1.5;
     ctx.strokeRect(mx1,my1-mPad,mx2-mx1,my2-my1+mPad*2);
   }
 
-  // Iris dots
+  // Iris dots — solid Clinical Blue
   if(lm.length>468){
     [lm[468],lm[473]].forEach(function(p){
       ctx.beginPath();ctx.arc(p.x*w,p.y*h,4,0,Math.PI*2);
-      ctx.fillStyle='rgba(255,255,255,0.95)';ctx.fill();
+      ctx.fillStyle='#1E88E5';ctx.fill();
     });
   }
 
-  // Gaze vector (show movement direction)
+  // Gaze / pursuit trace
   if(BASE.irisX!==null&&lm.length>468){
     var cx=lm[468].x*w;
     var cy=lm[468].y*h;
     var dx=(f.Rx-BASE.irisX)*w*3;
     var dy=(f.Ry-BASE.irisY)*h*3;
-    ctx.strokeStyle='rgba(251,191,36,0.8)';ctx.lineWidth=2;
+    ctx.strokeStyle='rgba(30,136,229,0.4)';ctx.lineWidth=2;
     ctx.beginPath();ctx.moveTo(cx,cy);ctx.lineTo(cx+dx,cy+dy);ctx.stroke();
   }
 
@@ -1803,13 +1817,48 @@ function renderSheet(){
 // ═══════════════════════════════════════════════════
 function mean(arr){return arr.length?arr.reduce(function(a,b){return a+b;},0)/arr.length:0;}
 
+// Decompose a column-major 4x4 facial transformation matrix into yaw/pitch/roll (degrees)
+function matrixToEuler(m){
+  if(!m||m.length<11)return{yaw:0,pitch:0,roll:0};
+  var r00=m[0], r10=m[1], r20=m[2], r21=m[6], r22=m[10];
+  var sy=Math.sqrt(r00*r00+r10*r10);
+  var pitch,yaw,roll, D=180/Math.PI;
+  if(sy>1e-6){
+    pitch=Math.atan2(r21,r22);
+    yaw=Math.atan2(-r20,sy);
+    roll=Math.atan2(r10,r00);
+  }else{
+    pitch=Math.atan2(-r21,r22); yaw=Math.atan2(-r20,sy); roll=0;
+  }
+  return{yaw:yaw*D, pitch:pitch*D, roll:roll*D};
+}
+
+// Estimate lighting quality (0..1) from mean luminance of the current video frame
+var _lightCanvas=null;
+function sampleLighting(video){
+  try{
+    if(!_lightCanvas){_lightCanvas=document.createElement('canvas');_lightCanvas.width=32;_lightCanvas.height=32;}
+    var lc=_lightCanvas.getContext('2d');
+    lc.drawImage(video,0,0,32,32);
+    var data=lc.getImageData(0,0,32,32).data;
+    var sum=0,n=0;
+    for(var i=0;i<data.length;i+=4){sum+=0.299*data[i]+0.587*data[i+1]+0.114*data[i+2];n++;}
+    var lum=sum/Math.max(n,1); // 0..255
+    var score;
+    if(lum<70)score=lum/70;
+    else if(lum>200)score=Math.max(0,1-(lum-200)/55);
+    else score=1;
+    return clamp(score,0,1);
+  }catch(e){return 0.70;}
+}
+
 // Run one capture window: set prompt, speak it, animate progress, collect frames
 async function triageStep(step){
   document.getElementById('cnEmoji').textContent=step.emoji;
   document.getElementById('cnPromptTitle').textContent=step.title;
   document.getElementById('cnPromptSub').textContent=step.sub;
-  setStatus(step.sub, step.title);
-  await speakAndWait(step.title);
+  setStatus(step.name, step.bannerSub);                  // clear step name on status banner
+  await speakAndWait(step.title);                        // instruction completes BEFORE window opens
   await w(400);
   var fill=document.getElementById('cnProgressFill');
   fill.style.transition='none'; fill.style.width='0%';
@@ -1820,70 +1869,98 @@ async function triageStep(step){
   await w(step.dur);
   TRIAGE.capturing=false;
   fill.style.transition='width 3s linear';
-  return TRIAGE.frames.slice();
+  var frames=TRIAGE.frames.slice();
+  // accumulate confidence inputs
+  TRIAGE.capturedFrames+=frames.length;
+  TRIAGE.expectedFrames+=Math.round(step.dur/33.3);      // ~30fps target
+  if(frames.length>=Math.max(10, step.dur/1000*3))TRIAGE.stepsComplete++;
+  return frames;
 }
 
-// ── Per-domain scoring ──
+// ── Per-domain scoring — every function returns a normalized score in [0,1] ──
 function scoreCalib(frames){
   TRIAGE.baseEAR=mean(frames.map(function(f){return f.EAR;}))||0.30;
   TRIAGE.baseYaw=mean(frames.map(function(f){return f.headYaw;}))||0;
-  TRIAGE.baseAsym=mean(frames.map(function(f){return f.smileAsym;}))||0;
+  TRIAGE.baseAsym=mean(frames.map(function(f){return f.cn7asym;}))||0;
   TRIAGE.baseMouth=mean(frames.map(function(f){return f.mouthOpen;}))||0;
-  return {frames:frames.length, ok:frames.length>=15};
+  var earSD=stdDev(frames.map(function(f){return f.EAR;}));
+  var yawSD=stdDev(frames.map(function(f){return f.yawDeg;}));
+  TRIAGE.calibStability=clamp(1-(earSD/0.04 + yawSD/4)/2, 0, 1);
+  return {score:TRIAGE.calibStability, frames:frames.length, ok:frames.length>=15};
 }
+// PERCLOS — % of window with eyes closed (EAR below 55% of baseline). Flag >15%, urgent >30%.
 function scorePerclos(frames){
-  if(frames.length<5)return{label:'No data',flag:'warn',metric:'insufficient tracking'};
+  if(frames.length<5)return{score:0,label:'No data',flag:'warn',metric:'insufficient tracking'};
   var thr=(TRIAGE.baseEAR||0.30)*0.55;
   var closed=frames.filter(function(f){return f.EAR<thr;}).length;
-  var perclos=Math.round(closed/frames.length*100);
-  var flag=perclos<15?'good':perclos<30?'warn':'bad';
-  var label=perclos<15?'Alert':perclos<30?'Mild drowsiness':'Reduced alertness';
-  return{value:perclos, metric:perclos+'% eye-closure', label:label, flag:flag};
+  var perclos=closed/frames.length;                       // 0..1, denom guarded ≥5
+  var pct=Math.round(perclos*100);
+  var flag=perclos<=0.15?'good':perclos<=0.30?'warn':'bad';
+  var label=perclos<=0.15?'Alert':perclos<=0.30?'Mild drowsiness':'Reduced alertness';
+  return{score:clamp(1-perclos/0.5,0,1), value:perclos, metric:pct+'% eye-closure', label:label, flag:flag};
 }
+// CN VII resting asymmetry normalized to IOD. Flag if > 0.07 (7%).
 function scoreCN7(frames){
-  if(frames.length<5)return{label:'No data',flag:'warn',metric:'insufficient tracking'};
-  var asym=mean(frames.map(function(f){return f.smileAsym;}));
-  var flag=asym<0.035?'good':asym<0.060?'warn':'bad';
-  var label=asym<0.035?'Symmetric at rest':asym<0.060?'Mild asymmetry':'Asymmetry flagged';
-  return{value:asym, metric:'rest asym '+asym.toFixed(3), label:label, flag:flag};
+  if(frames.length<5)return{score:0,label:'No data',flag:'warn',metric:'insufficient tracking'};
+  var asym=mean(frames.map(function(f){return f.cn7asym;}));
+  var flag=asym<0.045?'good':asym<=0.07?'warn':'bad';
+  var label=asym<0.045?'Symmetric at rest':asym<=0.07?'Borderline asymmetry':'Asymmetry flagged';
+  return{score:clamp(1-asym/0.14,0,1), value:asym, metric:'rest asym '+(asym*100).toFixed(1)+'% IOD', label:label, flag:flag};
 }
+// GCS eye-opening proxy. E4 if peak EAR > 80% baseline, E3 if EAR > 0.12, else E1.
 function scoreGCS(frames){
-  if(frames.length<5)return{label:'No data',flag:'warn',metric:'insufficient tracking',e:'—'};
+  if(frames.length<5)return{score:0,label:'No data',flag:'warn',metric:'insufficient tracking',e:'—'};
   var maxEAR=Math.max.apply(null,frames.map(function(f){return f.EAR;}));
   var base=TRIAGE.baseEAR||0.30;
-  var ratio=maxEAR/base;
-  var e=maxEAR>base*0.8?4:maxEAR>0.12?3:1;
+  var e=maxEAR>base*0.80?4:maxEAR>0.12?3:1;
   var flag=e===4?'good':e===3?'warn':'bad';
-  var label=e===4?'Eyes open / widen (E4)':e===3?'Reduced eye opening (E3)':'Minimal eye opening';
-  return{value:e, metric:'E'+e+' · widen x'+ratio.toFixed(2), label:label, flag:flag, e:e};
+  var label=e===4?'Eyes open / widen (E4)':e===3?'Reduced eye opening (E3)':'Minimal eye opening (E1)';
+  return{score:clamp(e/4,0,1), value:e, metric:'E'+e+' · peak EAR '+maxEAR.toFixed(2), label:label, flag:flag, e:e};
 }
+// CN XII tongue protrusion — tongueOut blendshape gate (>0.4); flag if no protrusion (maxMouth < 0.20).
 function scoreTongue(frames){
-  if(frames.length<5)return{label:'No data',flag:'warn',metric:'insufficient tracking'};
+  if(frames.length<5)return{score:0,label:'No data',flag:'warn',metric:'insufficient tracking'};
+  var maxTongue=Math.max.apply(null,frames.map(function(f){return f.tongueOut||0;}));
   var maxMouth=Math.max.apply(null,frames.map(function(f){return f.mouthOpen;}));
-  var flag=maxMouth>0.35?'good':maxMouth>0.20?'warn':'bad';
-  var label=maxMouth>0.35?'Protrusion detected':maxMouth>0.20?'Partial protrusion':'No protrusion';
-  return{value:maxMouth, metric:'aperture '+maxMouth.toFixed(2), label:label, flag:flag};
+  var flag,label,score;
+  if(maxTongue>0.4){flag='good';label='Protrusion confirmed';score=clamp(0.70+maxTongue*0.30,0,1);}
+  else if(maxMouth>=0.20){flag='warn';label='Mouth opened, tongue not detected';score=clamp(maxMouth/0.4,0,1)*0.6;}
+  else{flag='bad';label='No protrusion';score=clamp(maxMouth/0.4,0,1)*0.4;}
+  return{score:score, value:maxTongue, metric:'tongueOut '+maxTongue.toFixed(2)+' · aperture '+maxMouth.toFixed(2), label:label, flag:flag};
 }
+// Head pose drift — SD of yaw/pitch/roll (degrees) over the window. Flag if any axis SD > 3°.
 function scoreHead(frames){
-  if(frames.length<5)return{label:'No data',flag:'warn',metric:'insufficient tracking'};
-  var drift=stdDev(frames.map(function(f){return f.headYaw;}));
-  var flag=drift<0.012?'good':drift<0.025?'warn':'bad';
-  var label=drift<0.012?'Stable':drift<0.025?'Mild drift':'Drift flagged';
-  return{value:drift, metric:'yaw σ '+drift.toFixed(4), label:label, flag:flag};
+  if(frames.length<5)return{score:0,label:'No data',flag:'warn',metric:'insufficient tracking'};
+  var yawSD=stdDev(frames.map(function(f){return f.yawDeg;}));
+  var pitchSD=stdDev(frames.map(function(f){return f.pitchDeg;}));
+  var rollSD=stdDev(frames.map(function(f){return f.rollDeg;}));
+  var maxSD=Math.max(yawSD,pitchSD,rollSD);
+  var flag=maxSD<1.5?'good':maxSD<=3?'warn':'bad';
+  var label=maxSD<1.5?'Stable':maxSD<=3?'Mild drift':'Drift flagged';
+  return{score:clamp(1-maxSD/6,0,1), value:maxSD, metric:'max SD '+maxSD.toFixed(1)+'° (y'+yawSD.toFixed(1)+'/p'+pitchSD.toFixed(1)+'/r'+rollSD.toFixed(1)+')', label:label, flag:flag};
 }
 
+// Confidence: 0.35·validFramePct + 0.20·lighting + 0.25·calibStability + 0.20·completionRate
+function computeConfidence(R){
+  var validFramePct=TRIAGE.expectedFrames>0?clamp(TRIAGE.capturedFrames/TRIAGE.expectedFrames,0,1):0;
+  var lightingScore=clamp(TRIAGE.lightingScore,0,1);
+  var calibStability=clamp(TRIAGE.calibStability,0,1);
+  var completionRate=clamp(TRIAGE.stepsComplete/6,0,1);
+  var conf=0.35*validFramePct + 0.20*lightingScore + 0.25*calibStability + 0.20*completionRate;
+  return Math.round(clamp(conf,0,1)*100);
+}
+
+// Overall: URGENT if any red flag fires, FLAG if 2+ borderline, WATCH if 1 borderline, else NORMAL.
 function computeTriageOverall(R){
   var doms=[R.perclos,R.cn7,R.gcs,R.tongue,R.head];
   var bad=doms.filter(function(d){return d.flag==='bad';}).length;
   var warn=doms.filter(function(d){return d.flag==='warn';}).length;
   var status,cls,icon,txt,speak;
-  if(bad>=2){status='URGENT';cls='s-urgent';icon='🚑';txt='Multiple domains flagged on screening. Prompt clinical evaluation is recommended.';speak='Multiple findings flagged. Prompt clinical evaluation is recommended.';}
-  else if(bad===1){status='FLAG';cls='s-flag';icon='🚩';txt='One domain flagged on screening. Clinical correlation is advised.';speak='One finding flagged. Clinical correlation is advised.';}
-  else if(warn>=2){status='WATCH';cls='s-watch';icon='👁️';txt='Borderline findings. Consider monitoring or re-screening.';speak='Borderline findings. Consider monitoring or re-screening.';}
+  if(bad>=1){status='URGENT';cls='s-urgent';icon='🚑';txt='A red-flag domain fired on screening. Prompt clinical evaluation is recommended.';speak='A red flag fired. Prompt clinical evaluation is recommended.';}
+  else if(warn>=2){status='FLAG';cls='s-flag';icon='🚩';txt='Two or more domains were borderline. Clinical correlation is advised.';speak='Two or more findings were borderline. Clinical correlation is advised.';}
+  else if(warn===1){status='WATCH';cls='s-watch';icon='👁️';txt='One borderline finding. Consider monitoring or re-screening.';speak='One borderline finding. Consider monitoring or re-screening.';}
   else{status='NORMAL';cls='s-normal';icon='✅';txt='No significant findings on this zero-hardware screen.';speak='No significant findings on this screen.';}
-  var calibOk=R.calib&&R.calib.ok;
-  var conf=Math.round(clamp((calibOk?0.92:0.70)-bad*0.10-warn*0.04,0.45,0.98)*100);
-  return{status:status,label:status,cls:cls,icon:icon,txt:txt,speak:speak,confidence:conf,bad:bad,warn:warn};
+  return{status:status,label:status,cls:cls,icon:icon,txt:txt,speak:speak,confidence:computeConfidence(R),bad:bad,warn:warn};
 }
 
 // ── TRIAGE exam runner (replaces legacy CN sequence) ──
@@ -1891,7 +1968,9 @@ async function startExam(){
   if(examRunning||!cameraActive)return;
   examRunning=true;
   TRIAGE.active=true; TRIAGE.result=null;
+  TRIAGE.capturedFrames=0; TRIAGE.expectedFrames=0; TRIAGE.stepsComplete=0; TRIAGE.calibStability=0; TRIAGE.lightingScore=0;
   hideResults();
+  var fwEl=document.querySelector('.fab-wrap'); if(fwEl)fwEl.style.display='none';  // hide FAB during TRIAGE
   document.getElementById('alertBox').style.display='none';
   document.getElementById('replayBtn').style.display='none';
   document.getElementById('statusBanner').className='status-banner';
@@ -1900,9 +1979,10 @@ async function startExam(){
   setStatus('TRIAGE Screen','6 quick steps — about 90 seconds');
   await speakAndWait('Starting triage screening. Follow the on-screen prompts.');
 
-  // Wait for face lock
+  // Wait for face lock — exam does not start until BUF.iris.length >= 20
   setStatus('Detecting face...','Hold still — locking on facial landmarks');
-  var fw=0; while(fw<100&&BUF.iris.length<15){await w(100);fw++;}
+  var fw=0; while(fw<150&&BUF.iris.length<20){await w(100);fw++;}
+  TRIAGE.lightingScore=sampleLighting(document.getElementById('webcam'));
 
   var R={};
   R.calib  = scoreCalib(await triageStep(TRIAGE_STEPS[0]));
@@ -1920,7 +2000,6 @@ async function startExam(){
 
   setStatus('✓ TRIAGE Complete', overall.label+' — results ready');
   document.getElementById('statusBanner').className='status-banner complete';
-  document.getElementById('replayBtn').style.display='flex';
   positionOverlays();
 
   await speakAndWait('Triage complete. '+overall.speak);
@@ -1953,12 +2032,14 @@ function showResults(){
     +domCard('🧭','Head Stability',d.head)
     +'</div>';
   h+='<div class="res-actions">'
+    +'<button class="res-btn primary" onclick="resetExam()">RUN AGAIN</button>'
     +'<button class="res-btn primary" disabled>RUN ACUTE MODE — Coming Soon</button>'
     +'<button class="res-btn outline" onclick="exportReport()">EXPORT REPORT</button>'
     +'</div>';
   h+='<div class="res-disclaim">This screening tool aids clinical assessment. It does not constitute a diagnosis.</div>';
   document.getElementById('resultsBody').innerHTML=h;
   document.getElementById('results').classList.add('show');
+  var fwEl=document.querySelector('.fab-wrap'); if(fwEl)fwEl.style.display='flex';  // FAB available after results
 }
 function hideResults(){
   var el=document.getElementById('results');
@@ -1980,9 +2061,10 @@ function exportReport(){
     'Contact: rich.rubel@predictwellhealth.ai'
   ];
   var blob=new Blob([lines.join('\n')],{type:'text/plain'});
+  var ts=new Date().toISOString().replace(/[:.]/g,'-').replace('T','_').slice(0,19);
   var a=document.createElement('a');
   a.href=URL.createObjectURL(blob);
-  a.download='cranialcheck-triage-report.txt';
+  a.download='cranialcheck-triage-'+ts+'.txt';
   document.body.appendChild(a); a.click(); a.remove();
 }
 
