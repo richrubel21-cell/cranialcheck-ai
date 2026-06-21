@@ -1,0 +1,736 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>CranialCheck AI — AI-Based Assessment System with Continuous Monitoring</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,400;0,700;0,900;1,400&family=Outfit:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+  <style>
+    *{box-sizing:border-box;margin:0;padding:0}
+    html{scroll-behavior:smooth}
+    body{font-family:'Outfit',sans-serif;color:#1a2236;line-height:1.65;overflow-x:hidden}
+    a{color:inherit;text-decoration:none}
+    img{max-width:100%;display:block}
+    .wrap{max-width:1220px;margin:0 auto;padding:0 28px}
+
+    /* ── Animations ── */
+    .r{opacity:0;transform:translateY(40px);transition:opacity .8s cubic-bezier(.22,1,.36,1),transform .8s cubic-bezier(.22,1,.36,1)}
+    .r.v{opacity:1;transform:none}
+    .r.d1{transition-delay:.12s}.r.d2{transition-delay:.24s}.r.d3{transition-delay:.36s}.r.d4{transition-delay:.48s}
+
+    @keyframes float{0%,100%{transform:translateY(0)}50%{transform:translateY(-12px)}}
+    @keyframes pulse{0%,100%{opacity:.6}50%{opacity:1}}
+    @keyframes draw{to{stroke-dashoffset:0}}
+    @keyframes spin{to{transform:rotate(360deg)}}
+    @keyframes slideIn{from{opacity:0;transform:translateX(-30px)}to{opacity:1;transform:none}}
+
+    /* ── Top Bar ── */
+    .topbar{background:linear-gradient(135deg,#091B32,#0C2A4A);padding:10px 0;font-size:13px;color:rgba(255,255,255,.7)}
+    .topbar-inner{display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px}
+    .topbar a{color:rgba(255,255,255,.85);transition:color .2s}.topbar a:hover{color:#90CAF9}
+    .topbar-links{display:flex;gap:24px;align-items:center}
+
+    /* ── Header ── */
+    .header{position:sticky;top:0;z-index:200;background:rgba(255,255,255,.92);backdrop-filter:blur(20px);-webkit-backdrop-filter:blur(20px);border-bottom:1px solid rgba(0,0,0,.06);transition:box-shadow .3s}
+    .header.scrolled{box-shadow:0 4px 30px rgba(0,0,0,.08)}
+    .header-inner{display:flex;align-items:center;justify-content:space-between;padding:14px 0;gap:20px}
+    .logo{display:flex;align-items:center;gap:14px}
+    .logo-mark{width:50px;height:50px;border-radius:14px;background:linear-gradient(135deg,#0A1E38,#143656);display:flex;align-items:center;justify-content:center;box-shadow:0 6px 20px rgba(10,30,56,.3);position:relative;overflow:hidden}
+    .logo-mark::after{content:'';position:absolute;width:120%;height:120%;background:conic-gradient(from 0deg,transparent,rgba(144,202,249,.3),transparent,rgba(144,202,249,.15),transparent);animation:spin 6s linear infinite;opacity:.5}
+    .logo-mark svg{position:relative;z-index:2}
+    .logo-name{font-family:'Playfair Display',serif;font-size:22px;font-weight:700;color:#0A1E38}
+    .logo-name span{color:#1E88E5}
+    .logo-sub{font-size:11px;color:#6B7D93;letter-spacing:1px;text-transform:uppercase;font-weight:500}
+    nav{display:flex;gap:4px}
+    nav a{padding:9px 16px;border-radius:8px;font-size:14.5px;font-weight:500;color:#4A5B73;transition:all .2s}
+    nav a:hover{background:rgba(30,136,229,.06);color:#1E88E5}
+    nav a.active{color:#1E88E5;font-weight:600}
+    .hdr-btn{padding:11px 24px;border-radius:10px;background:linear-gradient(135deg,#1E88E5,#42A5F5);color:#fff;font-weight:600;font-size:14px;border:none;cursor:pointer;box-shadow:0 6px 20px rgba(30,136,229,.3);transition:all .25s;font-family:inherit}
+    .hdr-btn:hover{transform:translateY(-2px);box-shadow:0 10px 30px rgba(30,136,229,.4)}
+
+    /* ══════════════════════════════════════
+       HERO - Full bleed, layered, dramatic
+       ══════════════════════════════════════ */
+    .hero{position:relative;min-height:92vh;display:flex;align-items:center;overflow:hidden}
+    .hero-bg{position:absolute;inset:0;z-index:0}
+    .hero-bg img{width:100%;height:100%;object-fit:cover}
+    .hero-bg::after{content:'';position:absolute;inset:0;background:linear-gradient(100deg,rgba(8,20,40,.92) 0%,rgba(8,20,40,.82) 35%,rgba(8,20,40,.45) 65%,rgba(8,20,40,.25) 100%)}
+    .hero-neural{position:absolute;inset:0;z-index:1;pointer-events:none;overflow:hidden}
+    .hero-neural svg{position:absolute;right:-5%;top:5%;width:55%;height:90%;opacity:.12}
+    .hero-content{position:relative;z-index:3;display:grid;grid-template-columns:1fr 1fr;gap:60px;align-items:center;padding:80px 0}
+    .hero-left{color:#fff}
+    .hero-tag{display:inline-flex;align-items:center;gap:10px;background:rgba(144,202,249,.12);border:1px solid rgba(144,202,249,.25);padding:8px 18px;border-radius:999px;font-size:12px;font-weight:600;color:#90CAF9;text-transform:uppercase;letter-spacing:1.5px;margin-bottom:24px;animation:slideIn .8s .2s both}
+    .hero-tag .dot{width:8px;height:8px;border-radius:50%;background:#90CAF9;box-shadow:0 0 12px rgba(144,202,249,.6);animation:pulse 2s infinite}
+    .hero h1{font-family:'Playfair Display',serif;font-size:54px;line-height:1.12;font-weight:900;margin-bottom:22px;animation:slideIn .8s .3s both}
+    .hero h1 .accent{color:#90CAF9}
+    .hero h1 .gold{color:#D4A853;font-style:italic}
+    .hero-desc{font-size:17.5px;line-height:1.8;color:rgba(255,255,255,.7);max-width:50ch;margin-bottom:32px;animation:slideIn .8s .4s both}
+    .hero-btns{display:flex;gap:14px;flex-wrap:wrap;animation:slideIn .8s .5s both}
+    .btn-main{padding:15px 32px;border-radius:12px;font-weight:700;font-size:15px;border:none;cursor:pointer;transition:all .3s;font-family:inherit;display:inline-flex;align-items:center;gap:10px}
+    .btn-main.teal{background:linear-gradient(135deg,#1E88E5,#42A5F5);color:#fff;box-shadow:0 8px 28px rgba(30,136,229,.4)}
+    .btn-main.teal:hover{transform:translateY(-3px);box-shadow:0 14px 40px rgba(30,136,229,.5)}
+    .btn-main.glass{background:rgba(255,255,255,.08);backdrop-filter:blur(12px);border:1.5px solid rgba(255,255,255,.2);color:#fff}
+    .btn-main.glass:hover{background:rgba(255,255,255,.15);border-color:rgba(255,255,255,.35)}
+
+    /* Hero right - floating cards cluster */
+    .hero-right{position:relative;height:480px}
+    .hero-card{position:absolute;background:rgba(255,255,255,.95);border-radius:18px;box-shadow:0 20px 60px rgba(0,0,0,.2);backdrop-filter:blur(10px);overflow:hidden;transition:transform .4s cubic-bezier(.22,1,.36,1)}
+    .hero-card:hover{transform:scale(1.03)!important}
+    .hc-1{top:0;left:10%;width:280px;animation:float 5s ease-in-out infinite}
+    .hc-1 img{width:100%;height:180px;object-fit:cover}
+    .hc-1 .hc-body{padding:16px 18px}
+    .hc-1 .hc-title{font-weight:700;font-size:15px;color:#0A1E38}
+    .hc-1 .hc-sub{font-size:12px;color:#6B7D93;margin-top:4px}
+    .hc-2{top:200px;right:0;width:220px;animation:float 5s 1.5s ease-in-out infinite}
+    .hc-2{padding:20px;text-align:center}
+    .hc-2 .hc-icon{width:60px;height:60px;margin:0 auto 12px;border-radius:50%;background:linear-gradient(135deg,rgba(30,136,229,.15),rgba(30,136,229,.05));display:flex;align-items:center;justify-content:center;font-size:28px}
+    .hc-2 .hc-val{font-family:'Playfair Display',serif;font-size:32px;font-weight:700;color:#1E88E5}
+    .hc-2 .hc-lab{font-size:12px;color:#6B7D93;margin-top:4px}
+    .hc-3{bottom:0;left:5%;width:260px;animation:float 5s 3s ease-in-out infinite}
+    .hc-3{padding:20px;display:flex;align-items:center;gap:16px}
+    .hc-3 .shield{width:52px;height:52px;border-radius:14px;background:linear-gradient(135deg,#0A1E38,#143656);display:flex;align-items:center;justify-content:center;font-size:24px;flex-shrink:0}
+    .hc-3 .hc-title{font-weight:700;font-size:14px;color:#0A1E38}
+    .hc-3 .hc-sub{font-size:12px;color:#6B7D93;margin-top:2px}
+
+    /* ── Wave divider ── */
+    .wave-div{position:relative;margin-top:-2px;z-index:4}
+    .wave-div svg{display:block;width:100%}
+
+    /* ══════════════════════════
+       WHO WE ARE - image bg
+       ══════════════════════════ */
+    .about{position:relative;padding:100px 0;overflow:hidden}
+    .about-bg{position:absolute;inset:0;z-index:0}
+    .about-bg img{width:100%;height:100%;object-fit:cover;filter:brightness(.2) saturate(.5)}
+    .about-bg::after{content:'';position:absolute;inset:0;background:linear-gradient(180deg,rgba(10,30,56,.92),rgba(10,30,56,.85))}
+    .about>.wrap{position:relative;z-index:2}
+    .about-grid{display:grid;grid-template-columns:1fr 1fr;gap:64px;align-items:center}
+    .about-imgs{position:relative}
+    .about-img-main{border-radius:20px;overflow:hidden;box-shadow:0 24px 60px rgba(0,0,0,.4);border:3px solid rgba(255,255,255,.08)}
+    .about-img-main img{width:100%;height:440px;object-fit:cover}
+    .about-img-inset{position:absolute;bottom:-28px;right:-28px;width:200px;border-radius:16px;overflow:hidden;box-shadow:0 16px 50px rgba(0,0,0,.5);border:4px solid rgba(10,30,56,.9)}
+    .about-img-inset img{width:100%;height:170px;object-fit:cover}
+    .about-badge{position:absolute;top:-20px;left:-20px;width:100px;height:100px;border-radius:50%;background:linear-gradient(135deg,#1E88E5,#42A5F5);display:flex;flex-direction:column;align-items:center;justify-content:center;box-shadow:0 10px 30px rgba(30,136,229,.4);animation:float 4s ease-in-out infinite}
+    .about-badge .ab-num{font-family:'Playfair Display',serif;font-size:28px;font-weight:900;color:#fff;line-height:1}
+    .about-badge .ab-label{font-size:9px;color:rgba(255,255,255,.8);text-transform:uppercase;letter-spacing:1px;margin-top:2px}
+    .eyebrow{font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:2.5px;color:#90CAF9;margin-bottom:14px;display:flex;align-items:center;gap:12px}
+    .eyebrow::before{content:'';width:32px;height:2px;background:linear-gradient(90deg,#90CAF9,transparent);border-radius:2px}
+    .about h2{font-family:'Playfair Display',serif;font-size:40px;line-height:1.15;color:#fff;margin-bottom:20px;font-weight:700}
+    .about p{color:rgba(255,255,255,.65);font-size:16px;line-height:1.85;margin-bottom:16px}
+    .about-callout{background:rgba(144,202,249,.08);border:1px solid rgba(144,202,249,.15);border-radius:14px;padding:20px 24px;margin:24px 0;color:rgba(255,255,255,.8);font-size:15px;line-height:1.7;position:relative;overflow:hidden}
+    .about-callout::before{content:'';position:absolute;left:0;top:0;bottom:0;width:3px;background:linear-gradient(180deg,#90CAF9,#1E88E5);border-radius:3px}
+
+    /* ══════════════════════════════════════════
+       CLINICAL FOCUS - textured bg, rich cards
+       ══════════════════════════════════════════ */
+    .clinical{position:relative;padding:100px 0;background:#F2F5F9;overflow:hidden}
+    .clinical::before{content:'';position:absolute;inset:0;background:url("data:image/svg+xml,%3Csvg width='60' height='60' viewBox='0 0 60 60' xmlns='http://www.w3.org/2000/svg'%3E%3Cg fill='none' fill-rule='evenodd'%3E%3Cg fill='%230B8F83' fill-opacity='0.03'%3E%3Cpath d='M36 34v-4h-2v4h-4v2h4v4h2v-4h4v-2h-4zm0-30V0h-2v4h-4v2h4v4h2V6h4V4h-4zM6 34v-4H4v4H0v2h4v4h2v-4h4v-2H6zM6 4V0H4v4H0v2h4v4h2V6h4V4H6z'/%3E%3C/g%3E%3C/g%3E%3C/svg%3E")}
+    .clinical::after{content:'';position:absolute;top:0;right:0;width:500px;height:500px;background:radial-gradient(circle,rgba(30,136,229,.08),transparent 70%);pointer-events:none}
+    .clinical>.wrap{position:relative;z-index:2}
+    .section-header{text-align:center;margin-bottom:52px}
+    .section-header .eyebrow{justify-content:center}
+    .section-header .eyebrow::before{display:none}
+    .section-header h2{font-family:'Playfair Display',serif;font-size:40px;color:#0A1E38;margin-bottom:14px}
+    .section-header p{font-size:16px;color:#6B7D93;max-width:60ch;margin:0 auto;line-height:1.75}
+
+    .clin-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:28px}
+    .clin-card{border-radius:20px;overflow:hidden;box-shadow:0 12px 40px rgba(0,0,0,.08);transition:all .4s cubic-bezier(.22,1,.36,1);position:relative;background:#fff}
+    .clin-card:hover{transform:translateY(-8px);box-shadow:0 24px 60px rgba(0,0,0,.14)}
+    .clin-card-img{height:220px;position:relative;overflow:hidden}
+    .clin-card-img img{width:100%;height:100%;object-fit:cover;transition:transform .6s cubic-bezier(.22,1,.36,1)}
+    .clin-card:hover .clin-card-img img{transform:scale(1.08)}
+    .clin-card-img::after{content:'';position:absolute;inset:0;background:linear-gradient(to top,rgba(10,30,56,.7) 0%,rgba(10,30,56,.1) 50%,transparent 100%)}
+    .clin-card-img .clin-label{position:absolute;bottom:16px;left:18px;z-index:2;font-family:'Playfair Display',serif;font-size:22px;font-weight:700;color:#fff;text-shadow:0 2px 10px rgba(0,0,0,.3)}
+    .clin-card-body{padding:24px 22px 28px}
+    .clin-card-body p{font-size:14.5px;color:#4A5B73;line-height:1.7;margin-bottom:16px}
+    .clin-tags{display:flex;flex-wrap:wrap;gap:6px}
+    .ctag{font-size:11px;font-weight:600;padding:5px 12px;border-radius:999px;background:linear-gradient(135deg,rgba(30,136,229,.08),rgba(30,136,229,.03));color:#1E88E5;border:1px solid rgba(30,136,229,.12)}
+
+    /* Inline SVG decoration on cards */
+    .clin-card .card-decor{position:absolute;top:14px;right:14px;z-index:3;width:44px;height:44px;border-radius:12px;background:rgba(255,255,255,.9);backdrop-filter:blur(8px);display:flex;align-items:center;justify-content:center;box-shadow:0 4px 16px rgba(0,0,0,.12)}
+    .clin-card .card-decor svg{width:24px;height:24px}
+
+    /* ══════════════════════════════
+       HOW IT WORKS - dark, graphic
+       ══════════════════════════════ */
+    .how{position:relative;padding:100px 0;background:linear-gradient(135deg,#081526,#0C2A4A);overflow:hidden}
+    .how::before{content:'';position:absolute;inset:0;background:url("data:image/svg+xml,%3Csvg width='100' height='100' viewBox='0 0 100 100' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M11 18c3.866 0 7-3.134 7-7s-3.134-7-7-7-7 3.134-7 7 3.134 7 7 7zm48 25c3.866 0 7-3.134 7-7s-3.134-7-7-7-7 3.134-7 7 3.134 7 7 7zm-43-7c1.657 0 3-1.343 3-3s-1.343-3-3-3-3 1.343-3 3 1.343 3 3 3zm63 31c1.657 0 3-1.343 3-3s-1.343-3-3-3-3 1.343-3 3 1.343 3 3 3z' fill='%235CE0D2' fill-opacity='.03' fill-rule='evenodd'/%3E%3C/svg%3E");opacity:.5}
+    .how>.wrap{position:relative;z-index:2}
+    .how .section-header h2{color:#fff}
+    .how .section-header p{color:rgba(255,255,255,.5)}
+    .how .eyebrow{color:#D4A853}.how .eyebrow::before{background:#D4A853}
+
+    .how-steps{display:grid;grid-template-columns:repeat(4,1fr);gap:24px;position:relative}
+    .how-steps::before{content:'';position:absolute;top:54px;left:12%;right:12%;height:2px;background:linear-gradient(90deg,transparent,rgba(144,202,249,.3),rgba(144,202,249,.3),transparent)}
+    .how-step{text-align:center;position:relative}
+    .how-step-num{width:64px;height:64px;border-radius:50%;margin:0 auto 20px;display:flex;align-items:center;justify-content:center;font-family:'Playfair Display',serif;font-size:24px;font-weight:700;position:relative;z-index:2;transition:all .4s}
+    .how-step-num.n1{background:linear-gradient(135deg,#1E88E5,#42A5F5);color:#fff;box-shadow:0 8px 25px rgba(30,136,229,.4)}
+    .how-step-num.n2{background:rgba(144,202,249,.1);border:2px solid rgba(144,202,249,.3);color:#90CAF9}
+    .how-step-num.n3{background:rgba(144,202,249,.1);border:2px solid rgba(144,202,249,.3);color:#90CAF9}
+    .how-step-num.n4{background:linear-gradient(135deg,#D4A853,#E0B96A);color:#fff;box-shadow:0 8px 25px rgba(212,168,83,.3)}
+    .how-step:hover .how-step-num{transform:scale(1.12)}
+    .how-step-title{font-weight:700;font-size:16px;color:#fff;margin-bottom:8px}
+    .how-step-desc{font-size:13.5px;color:rgba(255,255,255,.5);line-height:1.65;max-width:22ch;margin:0 auto}
+    .how-step-graphic{margin-top:20px;height:100px;display:flex;align-items:center;justify-content:center}
+    .how-step-graphic svg{width:80px;height:80px;opacity:.5}
+
+    /* ══════════════════════════════════════
+       RESEARCH - image bg with glass cards
+       ══════════════════════════════════════ */
+    .research{position:relative;padding:100px 0;overflow:hidden}
+    .research-bg{position:absolute;inset:0;z-index:0}
+    .research-bg img{width:100%;height:100%;object-fit:cover}
+    .research-bg::after{content:'';position:absolute;inset:0;background:linear-gradient(135deg,rgba(8,21,38,.88),rgba(12,42,74,.85))}
+    .research>.wrap{position:relative;z-index:2}
+    .research .section-header h2{color:#fff}
+    .research .section-header p{color:rgba(255,255,255,.55)}
+
+    .research-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:24px}
+    .res-card{background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.1);border-radius:20px;padding:32px;backdrop-filter:blur(16px);transition:all .4s;position:relative;overflow:hidden}
+    .res-card:hover{background:rgba(255,255,255,.12);transform:translateY(-6px);box-shadow:0 20px 50px rgba(0,0,0,.2)}
+    .res-card::before{content:'';position:absolute;top:0;left:0;right:0;height:3px;background:linear-gradient(90deg,transparent,#90CAF9,transparent);opacity:0;transition:opacity .4s}
+    .res-card:hover::before{opacity:1}
+    .res-card-icon{width:56px;height:56px;border-radius:16px;background:linear-gradient(135deg,rgba(144,202,249,.15),rgba(144,202,249,.05));border:1px solid rgba(144,202,249,.2);display:flex;align-items:center;justify-content:center;margin-bottom:20px}
+    .res-card-icon svg{width:28px;height:28px;color:#90CAF9}
+    .res-card h3{font-family:'Playfair Display',serif;font-size:20px;color:#fff;margin-bottom:10px;font-weight:700}
+    .res-card p{font-size:14px;color:rgba(255,255,255,.55);line-height:1.7}
+
+    /* ══════════════════
+       TEAM - photo bg
+       ══════════════════ */
+    .team{position:relative;padding:100px 0;overflow:hidden}
+    .team::before{content:'';position:absolute;inset:0;background:linear-gradient(180deg,#F2F5F9 0%,#E8EDF4 50%,#F2F5F9 100%)}
+    .team::after{content:'';position:absolute;top:0;left:0;width:400px;height:400px;background:radial-gradient(circle,rgba(30,136,229,.06),transparent 70%);pointer-events:none}
+    .team>.wrap{position:relative;z-index:2}
+    .team-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:28px}
+    .team-card{background:#fff;border-radius:20px;overflow:hidden;box-shadow:0 8px 32px rgba(0,0,0,.06);border:1px solid rgba(0,0,0,.04);transition:all .4s}
+    .team-card:hover{transform:translateY(-6px);box-shadow:0 20px 50px rgba(0,0,0,.1)}
+    .team-card-photo{height:240px;position:relative;overflow:hidden}
+    .team-card-photo img{width:100%;height:100%;object-fit:cover;transition:transform .5s}
+    .team-card:hover .team-card-photo img{transform:scale(1.05)}
+    .team-card-photo .placeholder-bg{width:100%;height:100%;background:linear-gradient(135deg,#0A1E38 0%,#153A5C 50%,#1E4D7B 100%);display:flex;align-items:center;justify-content:center}
+    .team-card-photo .placeholder-bg svg{width:64px;height:64px;color:rgba(255,255,255,.15)}
+    .team-card-photo .team-overlay{position:absolute;bottom:0;left:0;right:0;padding:16px 20px;background:linear-gradient(to top,rgba(10,30,56,.8),transparent);z-index:2}
+    .team-card-photo .team-overlay .tname{font-family:'Playfair Display',serif;font-size:18px;font-weight:700;color:#fff}
+    .team-card-photo .team-overlay .trole{font-size:12px;color:#90CAF9;font-weight:600;text-transform:uppercase;letter-spacing:.5px;margin-top:2px}
+    .team-card-info{padding:22px}
+    .team-card-info p{font-size:14px;color:#4A5B73;line-height:1.65}
+
+    /* ══════════════════════════════════════
+       CTA + CONTACT - dramatic split
+       ══════════════════════════════════════ */
+    .contact{position:relative;padding:0;overflow:hidden}
+    .contact-split{display:grid;grid-template-columns:1fr 1fr;min-height:600px}
+    .contact-left{position:relative;display:flex;align-items:center;justify-content:center;padding:60px 48px;overflow:hidden}
+    .contact-left-bg{position:absolute;inset:0;z-index:0}
+    .contact-left-bg img{width:100%;height:100%;object-fit:cover}
+    .contact-left-bg::after{content:'';position:absolute;inset:0;background:linear-gradient(135deg,rgba(30,136,229,.9),rgba(66,165,245,.85))}
+    .contact-left-content{position:relative;z-index:2;color:#fff;max-width:420px}
+    .contact-left-content h2{font-family:'Playfair Display',serif;font-size:38px;color:#fff;margin-bottom:16px;line-height:1.15}
+    .contact-left-content p{font-size:16px;color:rgba(255,255,255,.8);line-height:1.75;margin-bottom:28px}
+    .contact-methods{display:flex;flex-direction:column;gap:14px}
+    .c-method{display:flex;align-items:center;gap:14px;padding:14px 18px;border-radius:14px;background:rgba(255,255,255,.1);border:1px solid rgba(255,255,255,.15);transition:all .2s;backdrop-filter:blur(8px)}
+    .c-method:hover{background:rgba(255,255,255,.2);transform:translateX(4px)}
+    .c-method-icon{width:42px;height:42px;border-radius:12px;background:rgba(255,255,255,.15);display:flex;align-items:center;justify-content:center;font-size:18px;flex-shrink:0}
+    .c-method-label{font-size:11px;color:rgba(255,255,255,.6);font-weight:600;text-transform:uppercase;letter-spacing:.5px}
+    .c-method-val{font-size:15px;font-weight:600;color:#fff}
+    .contact-right{background:#fff;display:flex;align-items:center;justify-content:center;padding:60px 48px}
+    .contact-form{width:100%;max-width:440px}
+    .contact-form h3{font-family:'Playfair Display',serif;font-size:28px;color:#0A1E38;margin-bottom:6px}
+    .contact-form .cf-sub{font-size:14px;color:#6B7D93;margin-bottom:24px}
+    .cf-grid{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+    .cf-field{display:flex;flex-direction:column;gap:5px}
+    .cf-field.full{grid-column:1/-1}
+    .cf-field label{font-size:13px;font-weight:600;color:#0A1E38}
+    .cf-field input,.cf-field textarea,.cf-field select{font-family:inherit;font-size:14px;padding:12px 14px;border-radius:10px;border:1.5px solid #D5DCE6;background:#F7F8FA;color:#1a2236;outline:none;transition:all .2s}
+    .cf-field input:focus,.cf-field textarea:focus,.cf-field select:focus{border-color:#1E88E5;box-shadow:0 0 0 3px rgba(30,136,229,.1);background:#fff}
+    .cf-field textarea{min-height:100px;resize:vertical}
+    .cf-field select{appearance:none;cursor:pointer}
+    .cf-actions{margin-top:20px;display:flex;gap:12px;flex-wrap:wrap}
+    .cf-submit{padding:14px 32px;border-radius:10px;background:linear-gradient(135deg,#1E88E5,#42A5F5);color:#fff;font-weight:700;font-size:15px;border:none;cursor:pointer;font-family:inherit;box-shadow:0 6px 20px rgba(30,136,229,.3);transition:all .25s}
+    .cf-submit:hover{transform:translateY(-2px);box-shadow:0 10px 30px rgba(30,136,229,.4)}
+    .cf-alt{padding:14px 24px;border-radius:10px;border:1.5px solid #D5DCE6;background:#fff;font-weight:600;font-size:14px;color:#4A5B73;cursor:pointer;font-family:inherit;transition:all .2s}
+    .cf-alt:hover{border-color:#1E88E5;color:#1E88E5}
+    .cf-note{font-size:12px;color:#94A3B8;margin-top:16px}
+
+    /* ── Footer ── */
+    footer{background:linear-gradient(135deg,#081526,#0C2A4A);color:rgba(255,255,255,.55);padding:56px 0 36px;position:relative;overflow:hidden}
+    footer::before{content:'';position:absolute;top:0;left:0;right:0;height:3px;background:linear-gradient(90deg,#1E88E5,#90CAF9,#D4A853,#1E88E5)}
+    .foot-grid{display:grid;grid-template-columns:2fr 1fr 1fr 1fr;gap:40px;padding-bottom:36px;border-bottom:1px solid rgba(255,255,255,.06)}
+    .foot-brand{font-family:'Playfair Display',serif;font-size:22px;color:#fff;margin-bottom:14px}
+    .foot-brand span{color:#90CAF9}
+    .foot-about{font-size:14px;line-height:1.7;max-width:34ch}
+    .foot-heading{font-size:12px;font-weight:700;color:rgba(255,255,255,.8);text-transform:uppercase;letter-spacing:1.5px;margin-bottom:16px}
+    .foot-links{display:flex;flex-direction:column;gap:10px}
+    .foot-links a{font-size:14px;transition:color .2s}.foot-links a:hover{color:#90CAF9}
+    .foot-bottom{padding-top:28px;display:flex;justify-content:space-between;flex-wrap:wrap;gap:12px;font-size:13px}
+
+    /* ── Email Copy Tooltip ── */
+    .email-tooltip{position:fixed;background:#0A1E38;color:#90CAF9;padding:10px 18px;border-radius:10px;font-size:13px;font-weight:600;z-index:9999;pointer-events:none;opacity:0;transition:opacity .3s;box-shadow:0 8px 30px rgba(0,0,0,.3)}
+    .email-tooltip.show{opacity:1}
+
+    /* ── Responsive ── */
+    @media(max-width:1024px){
+      .hero-content{grid-template-columns:1fr}.hero-right{display:none}
+      .hero h1{font-size:42px}
+      .about-grid{grid-template-columns:1fr;gap:40px}
+      .clin-grid,.research-grid,.team-grid{grid-template-columns:1fr 1fr}
+      .how-steps{grid-template-columns:1fr 1fr}.how-steps::before{display:none}
+      .contact-split{grid-template-columns:1fr}
+      .foot-grid{grid-template-columns:1fr 1fr}
+    }
+    @media(max-width:768px){
+      .topbar{display:none}nav{display:none}
+      .hero h1{font-size:32px}
+      .hero{min-height:auto}
+      .hero-content{padding:56px 0}
+      .about h2,.section-header h2{font-size:32px}
+      .clin-grid,.research-grid,.team-grid{grid-template-columns:1fr}
+      .how-steps{grid-template-columns:1fr 1fr}
+      .contact-left{padding:48px 24px}
+      .contact-right{padding:48px 24px}
+      .contact-left-content h2{font-size:30px}
+      .cf-grid{grid-template-columns:1fr}
+      .foot-grid{grid-template-columns:1fr}
+    }
+  </style>
+</head>
+<body>
+
+<!-- ── Top Bar ── -->
+<div class="topbar">
+  <div class="wrap">
+    <div class="topbar-inner">
+      <span>CranialCheck AI — AI-Based Assessment System with Continuous Monitoring &amp; Long-Term Data Tracking</span>
+      <div class="topbar-links">
+        <a href="mailto:Rich.Rubel@myphysis.ai">✉ Rich.Rubel@myphysis.ai</a>
+        <a href="https://www.cranialcheckai.com" target="_blank">🌐 www.cranialcheckai.com</a>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ── Header ── -->
+<header class="header" id="stickyHeader">
+  <div class="wrap">
+    <div class="header-inner">
+      <a class="logo" href="#">
+        <div class="logo-mark">
+          <svg viewBox="0 0 28 28" width="28" height="28" fill="none">
+            <circle cx="14" cy="14" r="10" stroke="#90CAF9" stroke-width="1.5" opacity=".6"/>
+            <circle cx="14" cy="14" r="5" stroke="#90CAF9" stroke-width="1.5"/>
+            <circle cx="14" cy="14" r="2" fill="#1E88E5"/>
+            <line x1="14" y1="4" x2="14" y2="9" stroke="#90CAF9" stroke-width="1" opacity=".5"/>
+            <line x1="14" y1="19" x2="14" y2="24" stroke="#90CAF9" stroke-width="1" opacity=".5"/>
+            <line x1="4" y1="14" x2="9" y2="14" stroke="#90CAF9" stroke-width="1" opacity=".5"/>
+            <line x1="19" y1="14" x2="24" y2="14" stroke="#90CAF9" stroke-width="1" opacity=".5"/>
+          </svg>
+        </div>
+        <div>
+          <div class="logo-name">CranialCheck<span>AI</span></div>
+          <div class="logo-sub">AI-Based Assessment System</div>
+        </div>
+      </a>
+      <nav>
+        <a href="#about">About</a>
+        <a href="#clinical">Clinical Focus</a>
+        <a href="#how">Technology</a>
+        <a href="#research">Research</a>
+        <a href="#team">Team</a>
+        <a href="#contact">Contact</a>
+      </nav>
+      <a class="hdr-btn" href="demos.html" style="margin-right:8px;background:linear-gradient(135deg,#0A1E38,#143656);box-shadow:0 6px 20px rgba(10,30,56,.3)">Live Demos →</a>
+<a class="hdr-btn" href="#contact">Request Info →</a>
+    </div>
+  </div>
+</header>
+
+<!-- ══════════════════════════════
+     HERO
+     ══════════════════════════════ -->
+<section class="hero">
+  <div class="hero-bg">
+    <img src="https://images.unsplash.com/photo-1559757175-5700dde675bc?w=1600&q=80" alt="Neurology clinical environment" />
+  </div>
+  <!-- Animated neural network SVG overlay -->
+  <div class="hero-neural">
+    <svg viewBox="0 0 600 500" fill="none">
+      <circle cx="150" cy="80" r="6" fill="#90CAF9" opacity=".4"><animate attributeName="opacity" values=".2;.6;.2" dur="3s" repeatCount="indefinite"/></circle>
+      <circle cx="300" cy="140" r="8" fill="#90CAF9" opacity=".5"><animate attributeName="opacity" values=".3;.7;.3" dur="4s" repeatCount="indefinite"/></circle>
+      <circle cx="450" cy="60" r="5" fill="#90CAF9" opacity=".3"><animate attributeName="opacity" values=".1;.5;.1" dur="3.5s" repeatCount="indefinite"/></circle>
+      <circle cx="200" cy="250" r="7" fill="#90CAF9" opacity=".4"><animate attributeName="opacity" values=".2;.6;.2" dur="4.5s" repeatCount="indefinite"/></circle>
+      <circle cx="400" cy="220" r="6" fill="#D4A853" opacity=".3"><animate attributeName="opacity" values=".1;.5;.1" dur="3s" repeatCount="indefinite"/></circle>
+      <circle cx="500" cy="300" r="9" fill="#90CAF9" opacity=".5"><animate attributeName="opacity" values=".3;.8;.3" dur="5s" repeatCount="indefinite"/></circle>
+      <circle cx="100" cy="380" r="5" fill="#90CAF9" opacity=".3"><animate attributeName="opacity" values=".2;.5;.2" dur="3s" repeatCount="indefinite"/></circle>
+      <circle cx="350" cy="400" r="7" fill="#D4A853" opacity=".35"><animate attributeName="opacity" values=".15;.5;.15" dur="4s" repeatCount="indefinite"/></circle>
+      <line x1="150" y1="80" x2="300" y2="140" stroke="#90CAF9" stroke-width=".8" opacity=".2"/>
+      <line x1="300" y1="140" x2="450" y2="60" stroke="#90CAF9" stroke-width=".8" opacity=".15"/>
+      <line x1="300" y1="140" x2="400" y2="220" stroke="#90CAF9" stroke-width=".8" opacity=".2"/>
+      <line x1="200" y1="250" x2="400" y2="220" stroke="#90CAF9" stroke-width=".8" opacity=".15"/>
+      <line x1="400" y1="220" x2="500" y2="300" stroke="#90CAF9" stroke-width=".8" opacity=".2"/>
+      <line x1="150" y1="80" x2="200" y2="250" stroke="#90CAF9" stroke-width=".6" opacity=".1"/>
+      <line x1="100" y1="380" x2="200" y2="250" stroke="#90CAF9" stroke-width=".6" opacity=".1"/>
+      <line x1="350" y1="400" x2="500" y2="300" stroke="#D4A853" stroke-width=".6" opacity=".1"/>
+      <line x1="350" y1="400" x2="200" y2="250" stroke="#90CAF9" stroke-width=".6" opacity=".1"/>
+    </svg>
+  </div>
+  <div class="wrap">
+    <div class="hero-content">
+      <div class="hero-left">
+        <div class="hero-tag"><span class="dot"></span> AI-Powered Passive Computer Vision Assessment</div>
+        <h1>Zero-Hardware <span class="accent">Neurological</span> Screening for the <span class="gold">Battlefield and Clinic</span></h1>
+        <p class="hero-desc">The only browser-based platform combining oculomotor assessment, 10 cranial nerves, and speech motor analysis — deployable on any smartphone in under 90 seconds. No hardware. No app. No connectivity required.</p>
+        <div class="hero-btns">
+          <a class="btn-main teal" href="#contact">Request a Clinical Pilot →</a>
+          <a class="btn-main glass" href="#how">How It Works</a>
+        </div>
+      </div>
+      <div class="hero-right">
+        <!-- Floating card 1: brain scan photo -->
+        <div class="hero-card hc-1">
+          <img src="https://images.unsplash.com/photo-1559757148-5c350d0d3c56?w=500&q=80" alt="Brain scan neuroimaging"/>
+          <div class="hc-body">
+            <div class="hc-title">Passive Computer Vision Analysis</div>
+            <div class="hc-sub">CNN &amp; RNN/LSTM deep neural network assessment</div>
+          </div>
+        </div>
+        <!-- Floating card 2: stat -->
+        <div class="hero-card hc-2">
+          <div class="hc-icon">⚡</div>
+          <div class="hc-val">&lt;0.5s</div>
+          <div class="hc-lab">Edge Processing Latency</div>
+        </div>
+        <!-- Floating card 3: HIPAA -->
+        <div class="hero-card hc-3">
+          <div class="shield">🔒</div>
+          <div>
+            <div class="hc-title">HIPAA-Aligned</div>
+            <div class="hc-sub">No raw video stored — ever</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- Wave divider -->
+<div class="wave-div">
+  <svg viewBox="0 0 1440 80" preserveAspectRatio="none" style="height:60px">
+    <path d="M0,40 C360,80 720,0 1080,40 C1260,60 1380,50 1440,40 L1440,80 L0,80Z" fill="#F2F5F9"/>
+  </svg>
+</div>
+
+<!-- ══════════════════════════════
+     WHO WE ARE
+     ══════════════════════════════ -->
+<section class="about" id="about">
+  <div class="about-bg">
+    <img src="https://images.unsplash.com/photo-1530497610245-b1bbb5b39f3e?w=1600&q=80" alt="Laboratory background"/>
+  </div>
+  <div class="wrap">
+    <div class="about-grid">
+      <div class="about-imgs r">
+        <div class="about-badge"><div class="ab-num">AI</div><div class="ab-label">Powered</div></div>
+        <div class="about-img-main">
+          <img src="https://images.unsplash.com/photo-1579684385127-1ef15d508118?w=800&q=80" alt="Doctor reviewing brain imaging"/>
+        </div>
+        <div class="about-img-inset">
+          <img src="https://images.unsplash.com/photo-1582750433449-648ed127bb54?w=400&q=80" alt="Clinical team collaboration"/>
+        </div>
+      </div>
+      <div class="r d2">
+        <div class="eyebrow">Who We Are</div>
+        <h2>AI-Powered Assessment with Continuous Monitoring &amp; Long-Term Tracking</h2>
+        <p>CranialCheck AI is a computer vision-based, AI-powered system designed for conducting comprehensive neurological examinations, cognitive performance assessments, and frailty screenings. Using deep neural networks—including convolutional neural networks (CNNs) for movement recognition and recurrent neural networks (RNNs/LSTMs) for temporal analysis—our platform automates the assessment of cranial nerve function, motor strength responses, and cognitive performance.</p>
+        <p>The system continuously monitors patients using multiple room-mounted cameras and a tablet/smartphone interface with audiovisual capture, integrating with electronic health records (EHR) and a personal digital health binder for long-term outcome tracking and predictive analytics across ICU, inpatient, outpatient, and home settings.</p>
+        <div class="about-callout"><strong>Our mission:</strong> Deliver AI-based passive computer vision assessment and continuous monitoring to support clinicians with actionable intelligence—while maintaining the highest standards of patient privacy and data security.</div>
+        <a class="btn-main teal" href="#clinical" style="margin-top:12px">Our Clinical Focus →</a>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ══════════════════════════════
+     CLINICAL FOCUS
+     ══════════════════════════════ -->
+<section class="clinical" id="clinical">
+  <div class="wrap">
+    <div class="section-header r">
+      <div class="eyebrow">Clinical Focus</div>
+      <h2>Comprehensive Assessment Capabilities</h2>
+      <p>AI-powered algorithms for assessing neurological and cognitive parameters through passive computer vision analysis and standardized clinical protocols.</p>
+    </div>
+    <div class="clin-grid">
+      <div class="clin-card r d1">
+        <div class="clin-card-img">
+          <img src="https://images.unsplash.com/photo-1559757148-5c350d0d3c56?w=600&q=80" alt="Neurological brain imaging"/>
+          <div class="clin-label">Neurological &amp;<br>Cognitive Assessment</div>
+          <div class="card-decor">
+            <svg viewBox="0 0 24 24" fill="none" stroke="#1E88E5" stroke-width="2"><path d="M12 2a10 10 0 1 0 10 10A10 10 0 0 0 12 2z"/><path d="M12 6v6l4 2"/></svg>
+          </div>
+        </div>
+        <div class="clin-card-body">
+          <p>AI-powered assessment of cranial nerve function, motor responses, and cognitive performance through passive computer vision. Includes automated Glasgow Coma Scale (GCS) scoring and cranial nerve testing (CN II–XII).</p>
+          <div class="clin-tags"><span class="ctag">GCS Module</span><span class="ctag">Cranial Nerve Testing</span><span class="ctag">Cognitive Baselining</span><span class="ctag">CNN / RNN</span></div>
+        </div>
+      </div>
+      <div class="clin-card r d2">
+        <div class="clin-card-img">
+          <img src="https://images.unsplash.com/photo-1576091160399-112ba8d25d1d?w=600&q=80" alt="Patient care and mobility"/>
+          <div class="clin-label">Frailty Screening<br>&amp; Fall Risk</div>
+          <div class="card-decor">
+            <svg viewBox="0 0 24 24" fill="none" stroke="#1E88E5" stroke-width="2"><path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"/><rect x="8" y="2" width="8" height="4" rx="1"/><path d="M9 14l2 2 4-4"/></svg>
+          </div>
+        </div>
+        <div class="clin-card-body">
+          <p>Passive computer vision frailty assessment using Clinical Frailty Scale (CFS), Timed Get Up and Go (TUG), temporalis muscle thickness for sarcopenia detection, and fall risk scoring via the Hopkins Fall Risk Assessment Tool.</p>
+          <div class="clin-tags"><span class="ctag">CFS / TUG</span><span class="ctag">Sarcopenia Detection</span><span class="ctag">Hopkins Fall Risk</span><span class="ctag">Gait Analysis</span></div>
+        </div>
+      </div>
+      <div class="clin-card r d3">
+        <div class="clin-card-img">
+          <img src="https://images.unsplash.com/photo-1516549655169-df83a0774514?w=600&q=80" alt="ICU monitoring equipment"/>
+          <div class="clin-label">Delirium Detection<br>&amp; GCS Scoring</div>
+          <div class="card-decor">
+            <svg viewBox="0 0 24 24" fill="none" stroke="#1E88E5" stroke-width="2"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+          </div>
+        </div>
+        <div class="clin-card-body">
+          <p>Continuous audiovisual monitoring for early delirium detection using CAM-ICU-7 and ICDSC scoring tools. Automated RASS assessment for intubated or sedated patients, with real-time EHR integration for mental status updates.</p>
+          <div class="clin-tags"><span class="ctag">CAM-ICU-7</span><span class="ctag">ICDSC</span><span class="ctag">RASS Scoring</span><span class="ctag">Real-Time EHR</span></div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ══════════════════════════════
+     HOW IT WORKS
+     ══════════════════════════════ -->
+<section class="how" id="how">
+  <div class="wrap">
+    <div class="section-header r">
+      <div class="eyebrow">Technology</div>
+      <h2>How CranialCheck AI Works</h2>
+      <p>A dual-camera and multi-camera system with AI-powered assessment models, designed to operate across pre-operative, intra-operative, post-operative, and home environments.</p>
+    </div>
+    <div class="how-steps">
+      <div class="how-step r d1">
+        <div class="how-step-num n1">1</div>
+        <div class="how-step-title">Multi-Camera Capture</div>
+        <div class="how-step-desc">Dual-camera and multi-camera setup with room-mounted and bedside cameras capturing real-time video and audio.</div>
+        <div class="how-step-graphic">
+          <svg viewBox="0 0 80 80" fill="none"><rect x="16" y="12" width="48" height="36" rx="4" stroke="#90CAF9" stroke-width="1.5" opacity=".6"/><circle cx="40" cy="30" r="8" stroke="#90CAF9" stroke-width="1.5" opacity=".4"/><circle cx="40" cy="30" r="3" fill="#90CAF9" opacity=".5"/><line x1="32" y1="56" x2="48" y2="56" stroke="#90CAF9" stroke-width="1.5" opacity=".4"/><line x1="40" y1="48" x2="40" y2="56" stroke="#90CAF9" stroke-width="1.5" opacity=".4"/></svg>
+        </div>
+      </div>
+      <div class="how-step r d2">
+        <div class="how-step-num n2">2</div>
+        <div class="how-step-title">Deep Neural Networks</div>
+        <div class="how-step-desc">CNNs for movement recognition and RNN/LSTM networks for temporal analysis of movement patterns and coordination.</div>
+        <div class="how-step-graphic">
+          <svg viewBox="0 0 80 80" fill="none"><rect x="18" y="20" width="44" height="40" rx="6" stroke="#90CAF9" stroke-width="1.5" opacity=".6"/><circle cx="32" cy="36" r="4" stroke="#90CAF9" stroke-width="1" opacity=".5"/><circle cx="48" cy="36" r="4" stroke="#90CAF9" stroke-width="1" opacity=".5"/><circle cx="40" cy="48" r="4" stroke="#90CAF9" stroke-width="1" opacity=".5"/><line x1="35" y1="34" x2="45" y2="34" stroke="#90CAF9" stroke-width=".8" opacity=".3"/><line x1="34" y1="38" x2="38" y2="46" stroke="#90CAF9" stroke-width=".8" opacity=".3"/><line x1="46" y1="38" x2="42" y2="46" stroke="#90CAF9" stroke-width=".8" opacity=".3"/></svg>
+        </div>
+      </div>
+      <div class="how-step r d3">
+        <div class="how-step-num n3">3</div>
+        <div class="how-step-title">Assessment Models</div>
+        <div class="how-step-desc">AI-powered screening manager performs GCS scoring, delirium screening (CAM-ICU-7, ICDSC), and frailty assessments.</div>
+        <div class="how-step-graphic">
+          <svg viewBox="0 0 80 80" fill="none"><path d="M20 48a16 16 0 0 1 1.2-6A12 12 0 1 1 44 30a14 14 0 1 1 16 18Z" stroke="#90CAF9" stroke-width="1.5" opacity=".6"/><rect x="30" y="52" width="20" height="4" rx="2" fill="#90CAF9" opacity=".3"/><rect x="34" y="58" width="12" height="3" rx="1.5" fill="#90CAF9" opacity=".2"/></svg>
+        </div>
+      </div>
+      <div class="how-step r d4">
+        <div class="how-step-num n4">4</div>
+        <div class="how-step-title">EHR + Health Binder</div>
+        <div class="how-step-desc">Integrates with EHRs and a personal digital health binder for long-term tracking and predictive analytics.</div>
+        <div class="how-step-graphic">
+          <svg viewBox="0 0 80 80" fill="none"><rect x="20" y="16" width="40" height="48" rx="4" stroke="#D4A853" stroke-width="1.5" opacity=".6"/><line x1="28" y1="28" x2="52" y2="28" stroke="#D4A853" stroke-width="1" opacity=".4"/><line x1="28" y1="36" x2="44" y2="36" stroke="#D4A853" stroke-width="1" opacity=".3"/><line x1="28" y1="44" x2="48" y2="44" stroke="#D4A853" stroke-width="1" opacity=".3"/><circle cx="50" cy="52" r="6" fill="#D4A853" opacity=".2" stroke="#D4A853" stroke-width="1" /><path d="M48 52l2 2 4-4" stroke="#D4A853" stroke-width="1.2" opacity=".6"/></svg>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ══════════════════════════════
+     RESEARCH
+     ══════════════════════════════ -->
+<section class="research" id="research">
+  <div class="research-bg">
+    <img src="https://images.unsplash.com/photo-1532187863486-abf9dbad1b69?w=1600&q=80" alt="Research laboratory environment"/>
+  </div>
+  <div class="wrap">
+    <div class="section-header r">
+      <div class="eyebrow" style="color:#D4A853"><span style="display:inline-block;width:28px;height:2px;background:#D4A853;margin-right:10px;border-radius:2px;vertical-align:middle"></span>Research & Validation</div>
+      <h2>Patent-Backed Clinical Innovation</h2>
+      <p>Our technology is built on patented AI assessment methods with continuous monitoring and long-term data tracking capabilities.</p>
+    </div>
+    <div class="research-grid">
+      <div class="res-card r d1">
+        <div class="res-card-icon">
+          <svg viewBox="0 0 24 24" fill="none" stroke="#90CAF9" stroke-width="1.5"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/></svg>
+        </div>
+        <h3>Cognitive Baselining &amp; Longitudinal Tracking</h3>
+        <p>Structured baseline interviews assess depth and breadth of knowledge on patient-selected topics. Quarterly cognitive check-ins compare responses to baseline data to detect decline or improvement over time.</p>
+      </div>
+      <div class="res-card r d2">
+        <div class="res-card-icon">
+          <svg viewBox="0 0 24 24" fill="none" stroke="#90CAF9" stroke-width="1.5"><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/></svg>
+        </div>
+        <h3>Surgical Quality Databank</h3>
+        <p>Pre-operative, peri-operative, and post-operative neuroexamination data stored and analyzed with deep neural network analytics to predict and score surgical difficulty. Time-based follow-up tracking at 3, 6, 9, and 12 months.</p>
+      </div>
+      <div class="res-card r d3">
+        <div class="res-card-icon">
+          <svg viewBox="0 0 24 24" fill="none" stroke="#90CAF9" stroke-width="1.5"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/><circle cx="12" cy="16" r="1"/></svg>
+        </div>
+        <h3>EHR Integration &amp; Radiology AI</h3>
+        <p>NLP extraction of key information from radiology reports, reverse-engineered into VR visualizations. Predictive analytics using historical assessment data to forecast long-term patient outcomes with unique patient identifiers (UPI).</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ══════════════════════════════
+     TEAM
+     ══════════════════════════════ -->
+<section class="team" id="team">
+  <div class="wrap">
+    <div class="section-header r">
+      <div class="eyebrow">Our Team</div>
+      <h2>Founders & Advisors</h2>
+      <p>Bringing together neurosurgical expertise, clinical research, and AI engineering from Hurley Medical Center's Neurological Center of Excellence.</p>
+    </div>
+    <div class="team-grid">
+      <div class="team-card r d1">
+        <div class="team-card-photo">
+          <div class="placeholder-bg">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+          </div>
+          <div class="team-overlay">
+            <div class="tname">Rich Rubel</div>
+            <div class="trole">Founder & CEO, PredictWell Health AI</div>
+          </div>
+        </div>
+        <div class="team-card-info"><p>B.S. Information Technology, Northern Arizona University. Solo technical founder. Builder of CranialCheck AI, Physis AI, and SwingCheck AI.</p></div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ══════════════════════════════
+     CONTACT
+     ══════════════════════════════ -->
+<section class="contact" id="contact">
+  <div class="contact-split">
+    <div class="contact-left">
+      <div class="contact-left-bg">
+        <img src="https://images.unsplash.com/photo-1576091160550-2173dba999ef?w=1000&q=80" alt="Medical technology"/>
+      </div>
+      <div class="contact-left-content">
+        <div class="eyebrow" style="color:#fff;margin-bottom:14px"><span style="display:inline-block;width:28px;height:2px;background:rgba(255,255,255,.5);margin-right:10px;border-radius:2px;vertical-align:middle"></span>Get in Touch</div>
+        <h2>Ready to Explore a Clinical Pilot?</h2>
+        <p>Whether you're a clinician, researcher, hospital administrator, or investor—we'd love to connect and discuss how CranialCheck AI's patented assessment technology can support your clinical and research goals.</p>
+        <div class="contact-methods">
+          <a class="c-method" href="mailto:Rich.Rubel@myphysis.ai"><div class="c-method-icon">✉</div><div><div class="c-method-label">General Inquiries</div><div class="c-method-val">Rich.Rubel@myphysis.ai</div></div></a>
+          <a class="c-method" href="https://www.cranialcheckai.com" target="_blank"><div class="c-method-icon">🌐</div><div><div class="c-method-label">Website</div><div class="c-method-val">www.cranialcheckai.com</div></div></a>
+        </div>
+      </div>
+    </div>
+    <div class="contact-right">
+      <div class="contact-form">
+        <h3>Send Us a Message</h3>
+        <p class="cf-sub">Fill out the form and our team will respond promptly.</p>
+        <form action="https://formsubmit.co/Rich.Rubel@myphysis.ai" method="POST">
+          <input type="hidden" name="_subject" value="New CranialCheck AI Inquiry">
+          <input type="hidden" name="_captcha" value="false">
+          <input type="hidden" name="_next" value="https://cranialcheckai.com">
+          <div class="cf-grid">
+            <div class="cf-field"><label>Full Name</label><input name="name" placeholder="Jane Doe" required/></div>
+            <div class="cf-field"><label>Email</label><input name="email" type="email" placeholder="jane@hospital.org" required/></div>
+            <div class="cf-field"><label>Organization</label><input name="org" placeholder="Hospital / Clinic / Fund"/></div>
+            <div class="cf-field"><label>Interest</label><select name="interest"><option>Clinical pilot / evaluation</option><option>Research collaboration</option><option>Investor interest</option><option>Other</option></select></div>
+            <div class="cf-field full"><label>Message</label><textarea name="message" placeholder="Tell us what you're interested in..."></textarea></div>
+          </div>
+          <div class="cf-actions">
+            <button class="cf-submit" type="submit">Submit Request →</button>
+            <a class="cf-alt" href="mailto:Rich.Rubel@myphysis.ai?subject=CranialCheck%20AI%20Inquiry">Email Directly</a>
+          </div>
+        </form>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ── Footer ── -->
+<footer>
+  <div class="wrap">
+    <div class="foot-grid">
+      <div><div class="foot-brand">CranialCheck<span>AI</span></div><p class="foot-about">AI-based assessment system with continuous monitoring for neurological, cognitive, and frailty screening across clinical environments.</p></div>
+      <div><div class="foot-heading">Navigation</div><div class="foot-links"><a href="#about">About</a><a href="#clinical">Clinical Focus</a><a href="#how">Technology</a><a href="#research">Research</a></div></div>
+      <div><div class="foot-heading">Company</div><div class="foot-links"><a href="#team">Team</a><a href="#contact">Contact</a><a href="https://www.cranialcheckai.com">Website</a></div></div>
+      <div><div class="foot-heading">Contact</div><div class="foot-links"><a href="mailto:Rich.Rubel@myphysis.ai">Rich.Rubel@myphysis.ai</a><a href="https://www.cranialcheckai.com">www.cranialcheckai.com</a></div></div>
+    </div>
+    <div class="foot-bottom"><span>© 2026 PredictWell Health AI — CranialCheck AI</span><span>AI-Based Assessment with Continuous Monitoring</span></div>
+  </div>
+</footer>
+
+<script>
+// Scroll reveals
+const io=new IntersectionObserver(e=>{e.forEach(x=>{if(x.isIntersecting)x.target.classList.add('v')})},{threshold:.05,rootMargin:'0px 0px -40px 0px'});
+document.querySelectorAll('.r').forEach(el=>io.observe(el));
+
+// Sticky header shadow
+const hdr=document.getElementById('stickyHeader');
+window.addEventListener('scroll',()=>{hdr.classList.toggle('scrolled',scrollY>30)});
+
+// Active nav
+const sects=document.querySelectorAll('section[id]');
+const navs=document.querySelectorAll('nav a');
+window.addEventListener('scroll',()=>{
+  let c='';sects.forEach(s=>{if(scrollY>=s.offsetTop-200)c=s.id});
+  navs.forEach(a=>{a.classList.toggle('active',a.getAttribute('href')==='#'+c)});
+});
+
+// Form
+// Form submitted via Formsubmit.co
+
+// Parallax on hero floating cards
+document.addEventListener('mousemove',e=>{
+  const cards=document.querySelectorAll('.hero-card');
+  const mx=(e.clientX/innerWidth-.5);
+  const my=(e.clientY/innerHeight-.5);
+  cards.forEach((c,i)=>{
+    const f=[1,-.7,.8][i]||1;
+    c.style.transform=`translate(${mx*f*15}px,${my*f*10}px)`;
+  });
+});
+
+// Email links — copy to clipboard + try mailto
+const tooltip=document.createElement('div');
+tooltip.className='email-tooltip';
+document.body.appendChild(tooltip);
+let tooltipTimer;
+
+document.querySelectorAll('a[href^="mailto:"]').forEach(link=>{
+  link.addEventListener('click',function(e){
+    e.preventDefault();
+    const href=this.getAttribute('href');
+    const email=href.replace('mailto:','').split('?')[0];
+    navigator.clipboard.writeText(email).then(()=>{
+      clearTimeout(tooltipTimer);
+      const rect=this.getBoundingClientRect();
+      tooltip.textContent='✓ '+email+' copied to clipboard!';
+      tooltip.style.left=rect.left+'px';
+      tooltip.style.top=(rect.top-48)+'px';
+      tooltip.classList.add('show');
+      tooltipTimer=setTimeout(()=>tooltip.classList.remove('show'),2500);
+    });
+    // Also try to open default mail client
+    window.location.href=href;
+  });
+});
+</script>
+</body>
+</html>
