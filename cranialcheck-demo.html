@@ -9,6 +9,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;600&family=Outfit:wght@400;600;700;800;900&family=Playfair+Display:wght@700;900&display=swap" rel="stylesheet">
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <style>
 *{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent}
 :root{
@@ -379,6 +380,9 @@ body{font-family:var(--f);background:#000;-webkit-font-smoothing:antialiased}
 <script src="https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.3/vision_bundle.js" crossorigin="anonymous"></script>
 
 <script>
+const SUPABASE_URL = 'https://rtklrkslujbbprkpyghc.supabase.co';
+const SUPABASE_ANON = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InJ0a2xya3NsdWpiYnBya3B5Z2hjIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODIwNDUzMjYsImV4cCI6MjA5NzYyMTMyNn0.IK8uZKlnThrLnMH_obh_XCI8hF_wcKkRNxmUtKJE0tI';
+const sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON);
 'use strict';
 
 // ═══════════════════════════════════════════════════
@@ -1997,6 +2001,7 @@ async function startExam(){
 
   var overall=computeTriageOverall(R);
   TRIAGE.result={domains:R, overall:overall};
+  saveExamToSupabase(TRIAGE.result);
 
   setStatus('✓ TRIAGE Complete', overall.label+' — results ready');
   document.getElementById('statusBanner').className='status-banner complete';
@@ -2066,6 +2071,40 @@ function exportReport(){
   a.href=URL.createObjectURL(blob);
   a.download='cranialcheck-triage-'+ts+'.txt';
   document.body.appendChild(a); a.click(); a.remove();
+}
+
+async function saveExamToSupabase(result) {
+  try {
+    var o = result.overall;
+    var d = result.domains;
+    var record = {
+      exam_mode: 'TRIAGE',
+      overall_result: o.status,
+      confidence: o.confidence,
+      perclos_label: d.perclos.label,
+      perclos_metric: d.perclos.metric,
+      perclos_flag: d.perclos.flag,
+      cn7_label: d.cn7.label,
+      cn7_metric: d.cn7.metric,
+      cn7_flag: d.cn7.flag,
+      gcs_label: d.gcs.label,
+      gcs_metric: d.gcs.metric,
+      gcs_flag: d.gcs.flag,
+      tongue_label: d.tongue.label,
+      tongue_metric: d.tongue.metric,
+      tongue_flag: d.tongue.flag,
+      head_label: d.head.label,
+      head_metric: d.head.metric,
+      head_flag: d.head.flag,
+      device_info: navigator.userAgent,
+      session_id: (function(){ try{ return sessionStorage.getItem('cc_demo_access')||'guest'; }catch(e){return 'guest';} })()
+    };
+    var res = await sb.from('exams').insert([record]);
+    if(res.error) console.warn('Supabase save error:', res.error.message);
+    else console.log('Exam saved to Supabase');
+  } catch(e) {
+    console.warn('Supabase save failed:', e.message);
+  }
 }
 
 // ═══════════════════════════════════════════════════
