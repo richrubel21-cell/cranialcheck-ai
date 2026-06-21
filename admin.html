@@ -89,7 +89,13 @@ tr:last-child td{border-bottom:none}
 .dom-warn{color:var(--amber);font-weight:600}
 .dom-bad{color:var(--bad);font-weight:600}
 .raw{display:block;color:var(--tx3);font-family:var(--m);font-size:10.5px;font-weight:400;margin-top:2px}
-.detail-row td{font-family:var(--m);font-size:11px;color:var(--tx2);padding:7px 12px;border-bottom:2px solid var(--border)}
+.detail-row td{font-family:var(--m);font-size:11px;color:var(--tx2);padding:7px 12px;border-bottom:1px dashed var(--border)}
+.diag-row td{font-family:var(--m);font-size:11px;color:var(--tx2);padding:7px 12px 11px;border-bottom:2px solid var(--border)}
+.diag-k{color:var(--tx3);font-weight:600}
+.diag-err{margin-top:6px;color:#b91c1c;background:rgba(220,38,38,.08);border:1px solid rgba(220,38,38,.25);border-radius:6px;padding:5px 9px;white-space:normal;word-break:break-word}
+.brk td{background:rgba(220,38,38,.07)!important}
+.brk td:first-child{box-shadow:inset 4px 0 0 #dc2626}
+.brk-tag{display:inline-block;font-family:var(--f);font-size:9px;font-weight:800;color:#fff;background:#dc2626;border-radius:5px;padding:1px 5px;letter-spacing:.5px;vertical-align:middle}
 
 .pager{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:6px 2px 22px}
 .pager-info{font-size:13px;color:var(--tx2);font-family:var(--m)}
@@ -311,11 +317,19 @@ function renderDashboard(){
   var rv=function(v,dec){return (v==null||isNaN(v))?'—':Number(v).toFixed(dec);};
   var ri=function(v){return (v==null||isNaN(v))?'—':Math.round(v);};
   var raw=function(s){return '<span class="raw">'+s+'</span>';};
+  var fcell=function(v){var z=(v==null||isNaN(v)||Number(v)===0);return '<b style="color:'+(z?'#dc2626':'#16a34a')+'">'+(v==null?'—':v)+'</b>';};
   slice.forEach(function(r,i){
     var m=smeta(r.overall_result);
     var headRaw='yaw σ '+rv(r.head_yaw_sd,1)+'° · pitch σ '+rv(r.head_pitch_sd,1)+'° · roll σ '+rv(r.head_roll_sd,1)+'°';
-    h+='<tr style="background:'+m.tint+'">'
-      +'<td class="mono">'+(start+i+1)+'</td>'
+    // failure detection — model down, no face, or any step captured zero frames
+    var modelOk=r.model_loaded===true, faceOk=r.face_detected===true;
+    var stepFrames=[r.calib_frames,r.perclos_frames,r.cn7_frames,r.gcs_frames,r.tongue_frames,r.head_frames];
+    var anyZero=stepFrames.some(function(x){return x==null||Number(x)===0;});
+    var broken=(!modelOk)||(!faceOk)||anyZero;
+    var cls=broken?' class="brk"':'';
+    var bg=broken?'':' style="background:'+m.tint+'"';
+    h+='<tr'+cls+bg+'>'
+      +'<td class="mono">'+(start+i+1)+(broken?' <span class="brk-tag">⚠ BROKEN</span>':'')+'</td>'
       +'<td>'+fmtDate(r.created_at)+'</td>'
       +'<td>'+esc(r.exam_mode||'—')+'</td>'
       +'<td><span class="badge" style="background:'+m.badge+';color:'+m.hex+'">'+esc(r.overall_result||'—')+'</span></td>'
@@ -327,10 +341,22 @@ function renderDashboard(){
       +'<td class="'+flagClass(r.head_flag)+'">'+esc(r.head_label||'—')+raw('('+headRaw+')')+'</td>'
       +'<td>'+esc(browserName(r.device_info))+'</td>'
       +'</tr>';
-    h+='<tr class="detail-row" style="background:'+m.tint+'"><td colspan="11">'
+    // quality metrics row
+    h+='<tr class="detail-row'+(broken?' brk':'')+'"'+bg+'><td colspan="11">'
       +'Valid frames: '+ri(r.valid_frame_pct)+'% &nbsp;|&nbsp; Lighting: '+ri(r.lighting_score)+'% &nbsp;|&nbsp; '
       +'Calibration: '+ri(r.calibration_stability)+'% &nbsp;|&nbsp; Completion: '+ri(r.completion_rate)+'% &nbsp;|&nbsp; '
       +'Duration: '+rv(r.exam_duration_sec,1)+'s &nbsp;|&nbsp; FPS: '+ri(r.avg_fps)
+      +'</td></tr>';
+    // diagnostics row
+    h+='<tr class="diag-row'+(broken?' brk':'')+'"'+bg+'><td colspan="11">'
+      +'<span class="diag-k">Model:</span> '+(modelOk
+          ?'<b style="color:#16a34a">loaded ('+esc(r.model_delegate||'?')+')</b>'
+          :'<b style="color:#dc2626">FAILED ('+esc(r.model_delegate||'none')+')</b>')
+      +' &nbsp;|&nbsp; <span class="diag-k">Face:</span> '+(faceOk?'<b style="color:#16a34a">yes</b>':'<b style="color:#dc2626">NO</b>')
+      +' &nbsp;|&nbsp; <span class="diag-k">Frames</span> calib '+fcell(r.calib_frames)+' · PERCLOS '+fcell(r.perclos_frames)
+        +' · CN7 '+fcell(r.cn7_frames)+' · GCS '+fcell(r.gcs_frames)+' · tongue '+fcell(r.tongue_frames)+' · head '+fcell(r.head_frames)
+      +' &nbsp;|&nbsp; <span class="diag-k">Iris:</span> '+rv(r.avg_iris_count,1)+' &nbsp;|&nbsp; <span class="diag-k">FPS:</span> '+ri(r.min_fps)+'–'+ri(r.max_fps)
+      +(r.error_log?'<div class="diag-err">⚠ '+esc(r.error_log)+'</div>':'')
       +'</td></tr>';
   });
   h+='</tbody></table></div></div>';
@@ -366,6 +392,9 @@ function exportCSV(){
     'head_label','head_metric','head_flag','head_yaw_sd','head_pitch_sd','head_roll_sd',
     'valid_frame_pct','lighting_score','calibration_stability','completion_rate',
     'exam_duration_sec','avg_fps','subject_age','subject_sex','subject_id',
+    'model_loaded','model_delegate','face_detected',
+    'calib_frames','perclos_frames','cn7_frames','gcs_frames','tongue_frames','head_frames',
+    'avg_iris_count','min_fps','max_fps','error_log',
     'device_info','session_id'];
   var seen={}, cols=[];
   preferred.forEach(function(c){ if(!seen[c] && ROWS.some(function(r){return c in r;})){seen[c]=1;cols.push(c);} });

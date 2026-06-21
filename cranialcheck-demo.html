@@ -377,7 +377,8 @@ body{font-family:var(--f);background:#000;-webkit-font-smoothing:antialiased}
 </div>
 
 <!-- MediaPipe Tasks Vision -->
-<script src="https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.3/vision_bundle.js" crossorigin="anonymous"></script>
+<!-- MediaPipe tasks-vision is loaded as an ES module via dynamic import() in loadFaceLandmarker()
+     (the @0.10.3 UMD vision_bundle.js does not exist — only vision_bundle.mjs / .cjs). -->
 
 <script>
 const SUPABASE_URL = 'https://rtklrkslujbbprkpyghc.supabase.co';
@@ -444,6 +445,27 @@ var TRIAGE={active:false, capturing:false, frames:[], baseEAR:null, baseYaw:null
             startMs:0, renderFrames:0};
 var BLEND={};                                   // latest face blendshape scores
 var POSE={yaw:0,pitch:0,roll:0};                // latest head pose (degrees)
+
+// ── RUN DIAGNOSTICS — recorded on every exam so failures are visible in the admin ──
+var DIAG={
+  model_loaded:false, model_delegate:'none',    // set at model-load time (persists across re-runs)
+  face_detected:false,
+  calib_frames:0, perclos_frames:0, cn7_frames:0, gcs_frames:0, tongue_frames:0, head_frames:0,
+  irisSum:0, detectFrames:0,                     // → avg_iris_count
+  min_fps:null, max_fps:null,
+  errors:[]
+};
+function diagError(msg){ if(msg && DIAG.errors.length<25) DIAG.errors.push(String(msg)); }
+function resetDiagForExam(){
+  // Per-exam fields reset each run; model_loaded/model_delegate are kept (set once at load).
+  DIAG.face_detected=false;
+  DIAG.calib_frames=0; DIAG.perclos_frames=0; DIAG.cn7_frames=0;
+  DIAG.gcs_frames=0; DIAG.tongue_frames=0; DIAG.head_frames=0;
+  DIAG.irisSum=0; DIAG.detectFrames=0;
+  DIAG.min_fps=null; DIAG.max_fps=null;
+  DIAG.errors=[];
+}
+
 var TRIAGE_STEPS=[
   {id:'calib',  emoji:'🎯', name:'Calibrating',        bannerSub:'Hold still — 2 seconds',                 title:'Hold still, looking at camera',                         sub:'Step 1 · Calibrating baseline',     dur:2000},
   {id:'perclos',emoji:'👁️', name:'Alertness Screen',   bannerSub:'Keep eyes open — 30 seconds',            title:'Keep your eyes open and look at the camera',            sub:'Step 2 · PERCLOS alertness window', dur:30000},
@@ -577,31 +599,52 @@ function landmarkerOpts(delegate){
     outputFacialTransformationMatrixes:true
   };
 }
+var visionModule=null;
 async function loadFaceLandmarker(){
-  // The MediaPipe UMD bundle must have attached to window.vision
-  if(!window.vision || !window.vision.FilesetResolver || !window.vision.FaceLandmarker){
-    console.error('[CC] MediaPipe tasks-vision bundle not available on window.vision');
+  // Load the MediaPipe tasks-vision ES module via dynamic import().
+  // (The UMD vision_bundle.js does NOT exist for 0.10.3 — only vision_bundle.mjs.)
+  try{
+    if(!visionModule){
+      visionModule=await import('https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.3/vision_bundle.mjs');
+    }
+  }catch(impErr){
+    console.error('[CC] MediaPipe module import failed:',impErr);
+    diagError('module import failed: '+(impErr&&impErr.message));
+    DIAG.model_loaded=false; DIAG.model_delegate='failed';
+    setStatus('AI library failed to load','Check connection and refresh the page');
+    faceLandmarker=null;
+    return false;
+  }
+  if(!visionModule||!visionModule.FilesetResolver||!visionModule.FaceLandmarker){
+    console.error('[CC] tasks-vision module missing FilesetResolver/FaceLandmarker');
+    diagError('vision module missing expected exports');
+    DIAG.model_loaded=false; DIAG.model_delegate='failed';
     setStatus('AI library failed to load','Check connection and refresh the page');
     faceLandmarker=null;
     return false;
   }
   try{
-    var vision=await window.vision.FilesetResolver.forVisionTasks(
+    var fileset=await visionModule.FilesetResolver.forVisionTasks(
       'https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.3/wasm'
     );
     // Try GPU first, fall back to CPU (GPU delegate is unavailable on many devices/browsers)
     try{
-      faceLandmarker=await window.vision.FaceLandmarker.createFromOptions(vision,landmarkerOpts('GPU'));
+      faceLandmarker=await visionModule.FaceLandmarker.createFromOptions(fileset,landmarkerOpts('GPU'));
+      DIAG.model_loaded=true; DIAG.model_delegate='GPU';
       console.log('[CC] FaceLandmarker ready (GPU delegate)');
     }catch(gpuErr){
       console.warn('[CC] GPU delegate failed, retrying on CPU:',gpuErr&&gpuErr.message);
-      faceLandmarker=await window.vision.FaceLandmarker.createFromOptions(vision,landmarkerOpts('CPU'));
+      diagError('GPU delegate failed: '+(gpuErr&&gpuErr.message));
+      faceLandmarker=await visionModule.FaceLandmarker.createFromOptions(fileset,landmarkerOpts('CPU'));
+      DIAG.model_loaded=true; DIAG.model_delegate='CPU';
       console.log('[CC] FaceLandmarker ready (CPU delegate)');
     }
     setStatus('AI Model Ready','Position your face in the frame');
     return true;
   }catch(e){
     console.error('[CC] FaceLandmarker load failed:',e);
+    diagError('landmarker create failed: '+(e&&e.message));
+    DIAG.model_loaded=false; DIAG.model_delegate='failed';
     faceLandmarker=null;
     setStatus('AI model failed to load','Tap Reset to retry — check connection');
     return false;
@@ -1179,6 +1222,10 @@ function startRenderLoop(){
     var now=Date.now();
     if(now-lastFpsTime>=1000){
       fps=frameCount;frameCount=0;lastFpsTime=now;
+      if(TRIAGE.active){   // track FPS range only during an active exam
+        if(DIAG.min_fps===null||fps<DIAG.min_fps)DIAG.min_fps=fps;
+        if(DIAG.max_fps===null||fps>DIAG.max_fps)DIAG.max_fps=fps;
+      }
       if(CC_DEBUG)console.log('[CC] iris='+BUF.iris.length+' face='+(!!faceLandmarker)+' capturing='+TRIAGE.capturing+' featOK/s='+dbgFeatOK+' featNull/s='+dbgFeatNull+' fps='+fps);
       dbgFeatOK=0;dbgFeatNull=0;
     }
@@ -1196,6 +1243,10 @@ function startRenderLoop(){
           var lm=results.faceLandmarks[0];
           features=extractFeatures(lm);
           dbgFeatOK++;
+          // Diagnostics: real face tracked (never set by the fallback mesh)
+          DIAG.face_detected=true;
+          DIAG.detectFrames++;
+          DIAG.irisSum += (lm.length>=478?10:(lm.length>468?(lm.length-468):0));
           captureBaseline(features);
 
           // Blendshapes — capture tongueOut (and keep full map available)
@@ -1266,6 +1317,7 @@ function startRenderLoop(){
       }catch(e){
         dbgFeatNull++;
         if(CC_DEBUG)console.warn('[CC] detect/extract threw:',e&&e.message);
+        if(TRIAGE.active)diagError('detect/extract: '+(e&&e.message));
         drawFallbackMesh(ctx,w,h);
       }
       lastVideoTime=video.currentTime;
@@ -1911,6 +1963,8 @@ async function triageStep(step){
   fill.style.transition='width 3s linear';
   var frames=TRIAGE.frames.slice();
   if(CC_DEBUG)console.log('[CC] ■ capture END   '+step.id+' → '+frames.length+' frames');
+  // Diagnostics: record this step's real captured-frame count (the numbers that were silently zero)
+  DIAG[step.id+'_frames']=frames.length;
   // accumulate confidence inputs
   TRIAGE.capturedFrames+=frames.length;
   TRIAGE.expectedFrames+=Math.round(step.dur/33.3);      // ~30fps target
@@ -2024,6 +2078,8 @@ async function startExam(){
   TRIAGE.active=true; TRIAGE.result=null;
   TRIAGE.capturedFrames=0; TRIAGE.expectedFrames=0; TRIAGE.stepsComplete=0; TRIAGE.calibStability=0; TRIAGE.lightingScore=0;
   TRIAGE.startMs=performance.now(); TRIAGE.renderFrames=0;
+  resetDiagForExam();
+  if(!DIAG.model_loaded)diagError('model not loaded at exam start (delegate='+DIAG.model_delegate+')');
   hideResults();
   var fwEl=document.querySelector('.fab-wrap'); if(fwEl)fwEl.style.display='none';  // hide FAB during TRIAGE
   document.getElementById('alertBox').style.display='none';
@@ -2173,7 +2229,21 @@ async function saveExamToSupabase(result) {
       subject_sex: null,
       subject_id: null,
       device_info: navigator.userAgent,
-      session_id: (function(){ try{ return sessionStorage.getItem('cc_demo_access')||'guest'; }catch(e){return 'guest';} })()
+      session_id: (function(){ try{ return sessionStorage.getItem('cc_demo_access')||'guest'; }catch(e){return 'guest';} })(),
+      // ── run diagnostics (real, measured during this run) ──
+      model_loaded: !!DIAG.model_loaded,
+      model_delegate: DIAG.model_delegate,
+      face_detected: !!DIAG.face_detected,
+      calib_frames: DIAG.calib_frames,
+      perclos_frames: DIAG.perclos_frames,
+      cn7_frames: DIAG.cn7_frames,
+      gcs_frames: DIAG.gcs_frames,
+      tongue_frames: DIAG.tongue_frames,
+      head_frames: DIAG.head_frames,
+      avg_iris_count: DIAG.detectFrames>0 ? Math.round(DIAG.irisSum/DIAG.detectFrames*10)/10 : 0,
+      min_fps: DIAG.min_fps,
+      max_fps: DIAG.max_fps,
+      error_log: DIAG.errors.length ? DIAG.errors.join(' | ') : null
     };
     var res = await sb.from('exams').insert([record]);
     if(res.error) console.warn('Supabase save error:', res.error.message);
