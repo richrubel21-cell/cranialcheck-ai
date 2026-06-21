@@ -214,6 +214,7 @@ body{font-family:var(--f);background:#000;-webkit-font-smoothing:antialiased}
 .s-watch{background:rgba(255,251,235,.9);border-color:rgba(217,119,6,.4)}.s-watch .res-status-label{color:#d97706}
 .s-flag{background:rgba(255,247,237,.9);border-color:rgba(234,88,12,.45)}.s-flag .res-status-label{color:#ea580c}
 .s-urgent{background:rgba(254,242,242,.9);border-color:rgba(220,38,38,.5)}.s-urgent .res-status-label{color:#dc2626}
+.s-invalid{background:rgba(241,245,249,.95);border-color:#cbd5e1}.s-invalid .res-status-label{color:#64748b}
 .res-domains{display:flex;flex-direction:column;gap:11px;margin-bottom:18px}
 .res-dom{background:#fff;border:1px solid #E2E8F0;border-radius:14px;padding:14px 16px;display:flex;align-items:center;gap:13px}
 .res-dom-emoji{font-size:24px;flex-shrink:0;line-height:1}
@@ -1974,6 +1975,11 @@ async function triageStep(step){
 
 // ── Per-domain scoring — every function returns a normalized score in [0,1] ──
 function scoreCalib(frames){
+  if(frames.length<5){           // no usable calibration data → don't report false stability
+    TRIAGE.baseEAR=0.30; TRIAGE.baseYaw=0; TRIAGE.baseAsym=0; TRIAGE.baseMouth=0;
+    TRIAGE.calibStability=0;
+    return {score:0, label:'No data', flag:'warn', metric:'insufficient tracking', frames:frames.length, ok:false};
+  }
   TRIAGE.baseEAR=mean(frames.map(function(f){return f.EAR;}))||0.30;
   TRIAGE.baseYaw=mean(frames.map(function(f){return f.headYaw;}))||0;
   TRIAGE.baseAsym=mean(frames.map(function(f){return f.cn7asym;}))||0;
@@ -2056,15 +2062,22 @@ function computeConfidence(R){
 // Overall: URGENT if any red flag fires, FLAG if 2+ borderline, WATCH if 1 borderline, else NORMAL.
 function computeTriageOverall(R){
   var doms=[R.perclos,R.cn7,R.gcs,R.tongue,R.head];
+  var valid=doms.filter(function(d){return d.label!=='No data';}).length;
   var bad=doms.filter(function(d){return d.flag==='bad';}).length;
   var warn=doms.filter(function(d){return d.flag==='warn';}).length;
-  var status,cls,icon,txt,speak;
-  if(bad>=1){status='URGENT';cls='s-urgent';icon='🚑';txt='A red-flag domain fired on screening. Prompt clinical evaluation is recommended.';speak='A red flag fired. Prompt clinical evaluation is recommended.';}
-  else if(warn>=2){status='FLAG';cls='s-flag';icon='🚩';txt='Two or more domains were borderline. Clinical correlation is advised.';speak='Two or more findings were borderline. Clinical correlation is advised.';}
-  else if(warn===1){status='WATCH';cls='s-watch';icon='👁️';txt='One borderline finding. Consider monitoring or re-screening.';speak='One borderline finding. Consider monitoring or re-screening.';}
-  else{status='NORMAL';cls='s-normal';icon='✅';txt='No significant findings on this zero-hardware screen.';speak='No significant findings on this screen.';}
+  var status,label,cls,icon,txt,speak;
+  if(valid===0){
+    // No domain captured usable data — a technical failure, NOT a clinical flag.
+    status='INVALID';label='INCOMPLETE';cls='s-invalid';icon='⚠️';
+    txt='Screening could not be completed — no usable data was captured. Check the camera, lighting, and connection, then run again.';
+    speak='Screening could not be completed. No usable data was captured.';
+  }
+  else if(bad>=1){status='URGENT';label='URGENT';cls='s-urgent';icon='🚑';txt='A red-flag domain fired on screening. Prompt clinical evaluation is recommended.';speak='A red flag fired. Prompt clinical evaluation is recommended.';}
+  else if(warn>=2){status='FLAG';label='FLAG';cls='s-flag';icon='🚩';txt='Two or more domains were borderline. Clinical correlation is advised.';speak='Two or more findings were borderline. Clinical correlation is advised.';}
+  else if(warn===1){status='WATCH';label='WATCH';cls='s-watch';icon='👁️';txt='One borderline finding. Consider monitoring or re-screening.';speak='One borderline finding. Consider monitoring or re-screening.';}
+  else{status='NORMAL';label='NORMAL';cls='s-normal';icon='✅';txt='No significant findings on this zero-hardware screen.';speak='No significant findings on this screen.';}
   var cc=computeConfidence(R);
-  return{status:status,label:status,cls:cls,icon:icon,txt:txt,speak:speak,
+  return{status:status,label:label,cls:cls,icon:icon,txt:txt,speak:speak,
     confidence:cc.confidence,
     validFramePct:cc.validFramePct, lightingScore:cc.lightingScore,
     calibStability:cc.calibStability, completionRate:cc.completionRate,
@@ -2090,9 +2103,37 @@ async function startExam(){
   setStatus('TRIAGE Screen','6 quick steps — about 90 seconds');
   await speakAndWait('Starting triage screening. Follow the on-screen prompts.');
 
-  // Wait for face lock — exam does not start until BUF.iris.length >= 20
-  setStatus('Detecting face...','Hold still — locking on facial landmarks');
-  var fw=0; while(fw<150&&BUF.iris.length<20){await w(100);fw++;}
+  // ── Hard stop if the AI model never loaded ──
+  // Don't run a pointless 65-second exam; save a complete diagnostic row and tell the user honestly.
+  if(!DIAG.model_loaded){
+    document.getElementById('cnPrompt').style.display='none';
+    TRIAGE.active=false; examRunning=false;
+    var Rf={calib:scoreCalib([]),perclos:scorePerclos([]),cn7:scoreCN7([]),gcs:scoreGCS([]),tongue:scoreTongue([]),head:scoreHead([])};
+    var ovf=computeTriageOverall(Rf);
+    ovf.examDurationSec=Math.round((performance.now()-TRIAGE.startMs)/100)/10;
+    ovf.avgFps=0;
+    TRIAGE.result={domains:Rf, overall:ovf};
+    saveExamToSupabase(TRIAGE.result);            // failed run is still recorded for the admin
+    setStatus('AI model failed to load','Reload the page to retry — check your connection');
+    document.getElementById('statusBanner').className='status-banner';
+    await speakAndWait('The A I model could not load. Please reload the page and check your connection.');
+    showResults();
+    return;
+  }
+
+  // Wait for face lock — voice stays continuous so the user is never staring at a silent screen
+  setStatus('Detecting face...','Center your face in the frame');
+  await speakAndWait('Looking for your face. Please center your face in the frame.');
+  var fw=0;
+  while(fw<150&&BUF.iris.length<20){
+    await w(100); fw++;
+    if(fw===50&&BUF.iris.length<20)await speakAndWait('Still looking. Make sure your face is well lit and centered.');
+  }
+  if(BUF.iris.length>=20){
+    await speakAndWait('Face detected. Beginning the screen.');
+  }else{
+    await speakAndWait('I could not get a clear lock on your face. Continuing anyway — results may be limited.');
+  }
   TRIAGE.lightingScore=sampleLighting(document.getElementById('webcam'));
 
   var R={};
