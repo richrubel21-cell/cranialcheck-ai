@@ -562,29 +562,48 @@ function toggleAudio(){
 }
 
 // ── MEDIAPIPE INIT ──
+function landmarkerOpts(delegate){
+  return {
+    baseOptions:{
+      modelAssetPath:'https://storage.googleapis.com/mediapipe-models/face_landmarker/face_landmarker/float16/1/face_landmarker.task',
+      delegate:delegate
+    },
+    runningMode:'VIDEO',
+    numFaces:1,
+    minFaceDetectionConfidence:0.5,
+    minFacePresenceConfidence:0.5,
+    minTrackingConfidence:0.5,
+    outputFaceBlendshapes:true,
+    outputFacialTransformationMatrixes:true
+  };
+}
 async function loadFaceLandmarker(){
+  // The MediaPipe UMD bundle must have attached to window.vision
+  if(!window.vision || !window.vision.FilesetResolver || !window.vision.FaceLandmarker){
+    console.error('[CC] MediaPipe tasks-vision bundle not available on window.vision');
+    setStatus('AI library failed to load','Check connection and refresh the page');
+    faceLandmarker=null;
+    return false;
+  }
   try{
     var vision=await window.vision.FilesetResolver.forVisionTasks(
       'https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.3/wasm'
     );
-    faceLandmarker=await window.vision.FaceLandmarker.createFromOptions(vision,{
-      baseOptions:{
-        modelAssetPath:'https://storage.googleapis.com/mediapipe-models/face_landmarker/face_landmarker/float16/1/face_landmarker.task',
-        delegate:'GPU'
-      },
-      runningMode:'VIDEO',
-      numFaces:1,
-      minFaceDetectionConfidence:0.5,
-      minFacePresenceConfidence:0.5,
-      minTrackingConfidence:0.5,
-      outputFaceBlendshapes:true,
-      outputFacialTransformationMatrixes:true
-    });
+    // Try GPU first, fall back to CPU (GPU delegate is unavailable on many devices/browsers)
+    try{
+      faceLandmarker=await window.vision.FaceLandmarker.createFromOptions(vision,landmarkerOpts('GPU'));
+      console.log('[CC] FaceLandmarker ready (GPU delegate)');
+    }catch(gpuErr){
+      console.warn('[CC] GPU delegate failed, retrying on CPU:',gpuErr&&gpuErr.message);
+      faceLandmarker=await window.vision.FaceLandmarker.createFromOptions(vision,landmarkerOpts('CPU'));
+      console.log('[CC] FaceLandmarker ready (CPU delegate)');
+    }
     setStatus('AI Model Ready','Position your face in the frame');
     return true;
   }catch(e){
-    console.warn('FaceLandmarker load failed:',e);
-    setStatus('Running in demo mode','AI model unavailable — simulated tracking');
+    console.error('[CC] FaceLandmarker load failed:',e);
+    faceLandmarker=null;
+    setStatus('AI model failed to load','Tap Reset to retry — check connection');
     return false;
   }
 }
@@ -1133,6 +1152,9 @@ function scoreToDeg(s,testId){
 
 // ── RENDER LOOP ──
 var lastVideoTime=-1;
+var lastDetectMs=0;              // time-throttle for MediaPipe detection (robust vs currentTime stalls)
+var CC_DEBUG=true;               // console diagnostics for the capture pipeline
+var dbgFeatOK=0, dbgFeatNull=0;  // per-second extractFeatures success/miss counters
 function startRenderLoop(){
   var video=document.getElementById('webcam');
   var canvas=document.getElementById('meshCanvas');
@@ -1155,18 +1177,25 @@ function startRenderLoop(){
     frameCount++;
     if(TRIAGE.active)TRIAGE.renderFrames++;   // accumulate frames for avg FPS during the exam
     var now=Date.now();
-    if(now-lastFpsTime>=1000){fps=frameCount;frameCount=0;lastFpsTime=now;}
+    if(now-lastFpsTime>=1000){
+      fps=frameCount;frameCount=0;lastFpsTime=now;
+      if(CC_DEBUG)console.log('[CC] iris='+BUF.iris.length+' face='+(!!faceLandmarker)+' capturing='+TRIAGE.capturing+' featOK/s='+dbgFeatOK+' featNull/s='+dbgFeatNull+' fps='+fps);
+      dbgFeatOK=0;dbgFeatNull=0;
+    }
     document.getElementById('camInfoText').textContent=
       (facingMode==='user'?'Front':'Back')+' Camera • 478 landmarks • '+fps+' FPS';
 
-    // Run MediaPipe
+    // Run MediaPipe — time-throttled (~30fps) so detection runs continuously,
+    // independent of UI state and robust against video.currentTime stalls.
     var features=null;
-    if(faceLandmarker&&video.currentTime!==lastVideoTime){
+    if(faceLandmarker&&video.readyState>=2&&(now-lastDetectMs)>=33){
+      lastDetectMs=now;
       try{
         var results=faceLandmarker.detectForVideo(video,performance.now());
         if(results.faceLandmarks&&results.faceLandmarks.length>0){
           var lm=results.faceLandmarks[0];
           features=extractFeatures(lm);
+          dbgFeatOK++;
           captureBaseline(features);
 
           // Blendshapes — capture tongueOut (and keep full map available)
@@ -1231,9 +1260,12 @@ function startRenderLoop(){
             });
           }
         }else{
+          dbgFeatNull++;            // detection ran but no face this frame
           drawFallbackMesh(ctx,w,h);
         }
       }catch(e){
+        dbgFeatNull++;
+        if(CC_DEBUG)console.warn('[CC] detect/extract threw:',e&&e.message);
         drawFallbackMesh(ctx,w,h);
       }
       lastVideoTime=video.currentTime;
@@ -1873,10 +1905,12 @@ async function triageStep(step){
   fill.style.transition='width '+step.dur+'ms linear';
   setTimeout(function(){fill.style.width='100%';},30);
   TRIAGE.frames=[]; TRIAGE.capturing=true;
+  if(CC_DEBUG)console.log('[CC] ▶ capture START '+step.id+' (iris='+BUF.iris.length+', face='+(!!faceLandmarker)+')');
   await w(step.dur);
   TRIAGE.capturing=false;
   fill.style.transition='width 3s linear';
   var frames=TRIAGE.frames.slice();
+  if(CC_DEBUG)console.log('[CC] ■ capture END   '+step.id+' → '+frames.length+' frames');
   // accumulate confidence inputs
   TRIAGE.capturedFrames+=frames.length;
   TRIAGE.expectedFrames+=Math.round(step.dur/33.3);      // ~30fps target
