@@ -204,7 +204,7 @@ const sb = (function(){
 function checkGate(){
   var input=document.getElementById('gateInput');
   var err=document.getElementById('gateErr');
-  var val=(input.value||'').trim();
+  var val=(input.value||'').trim().toLowerCase();   // case-insensitive — mobile keyboards auto-capitalize
   if(val==='predictwell2026'){
     try{sessionStorage.setItem('cc_admin_access','1');}catch(e){}
     err.textContent='';
