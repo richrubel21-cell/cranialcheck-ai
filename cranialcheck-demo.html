@@ -360,7 +360,7 @@ body{font-family:var(--f);background:#000;-webkit-font-smoothing:antialiased}
     <canvas id="meshCanvas" style="display:none"></canvas>
     <!-- FIELD examiner framing guide (back camera) — center the patient's face; turns green when locked -->
     <div id="fieldGuide" style="display:none;position:absolute;inset:0;z-index:7;pointer-events:none">
-      <div id="fieldOval" style="position:absolute;left:50%;top:46%;transform:translate(-50%,-50%);width:44%;height:54%;border:4px dashed rgba(255,255,255,0.85);border-radius:50%;box-shadow:0 0 0 2000px rgba(0,0,0,0.28);transition:border-color .2s"></div>
+      <div id="fieldOval" style="position:absolute;left:50%;top:46%;transform:translate(-50%,-50%);width:56%;height:46%;border:4px dashed rgba(255,255,255,0.85);border-radius:50%;box-shadow:0 0 0 2000px rgba(0,0,0,0.28);transition:border-color .2s"></div>
       <div id="fieldLock" style="position:absolute;left:50%;bottom:14px;transform:translateX(-50%);background:rgba(0,0,0,0.6);color:#fff;font:600 13px system-ui;padding:7px 14px;border-radius:999px;white-space:nowrap">◎ Center the patient's face</div>
     </div>
   </div>
@@ -2871,8 +2871,9 @@ async function startExam(mode){
   document.getElementById('replayBtn').style.display='none';
   document.getElementById('statusBanner').className='status-banner';
   document.getElementById('cnPrompt').style.display='flex';
-  var _mb=document.querySelector('.mode-bar'); if(_mb)_mb.style.display='none';   // capture screen = camera only, no mode buttons
-  var _tb=document.querySelector('.topbar'), _cp=document.getElementById('cnPrompt'); if(_tb&&_cp)_cp.style.top=_tb.offsetHeight+'px';  // pin instruction strip right under the header
+  var _tb=document.querySelector('.topbar'), _cp=document.getElementById('cnPrompt');   // clean capture screen
+  if(_tb)_tb.style.display='none';                 // hide header + buttons during capture (camera only)
+  if(_cp)_cp.style.top='0px';                       // instruction strip at the very top of the screen
 
   setStatus(mode+' Screen',(STEPS.length-1)+' steps');
   await speakAndWait('Center your face in the frame and follow the on-screen prompts.');
@@ -3029,7 +3030,7 @@ function showResults(){
 function hideResults(){
   var el=document.getElementById('results');
   if(el)el.classList.remove('show');
-  if(!examRunning){ var mb=document.querySelector('.mode-bar'); if(mb)mb.style.display=''; }  // restore mode buttons when back to the idle live view
+  if(!examRunning){ var tb=document.querySelector('.topbar'); if(tb)tb.style.display=''; var mb=document.querySelector('.mode-bar'); if(mb)mb.style.display=''; }  // restore header + mode buttons on the idle live view
 }
 function exportReport(){
   var r=TRIAGE.result; if(!r)return;
