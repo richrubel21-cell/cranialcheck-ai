@@ -682,11 +682,11 @@ async function loadFaceLandmarker(){
   }
   try{
     var fileset=await visionModule.FilesetResolver.forVisionTasks(MP_CDN+'/wasm');
-    // Delegate order: iOS Safari/WebKit GPU (WebGL2) delegate is unreliable — it can create
-    // successfully yet return zero landmarks (google-ai-edge/mediapipe #4499, #6142, #5122).
-    // So on iOS we try CPU FIRST (reliable, fast enough for one face), GPU only as last resort.
-    // On Android/desktop, GPU first for speed, CPU fallback.
-    var delegates = isIOS() ? ['CPU','GPU'] : ['GPU','CPU'];
+    // Delegate order: CPU FIRST on every device. The GPU/WebGL delegate is unreliable on mobile —
+    // it creates successfully yet returns EMPTY landmarks most frames (confirmed on iOS Safari AND
+    // a real Android GPU via field telemetry: face_detected sporadic, "searching", 0 captured frames).
+    // CPU (WASM-SIMD) is reliable everywhere and fast enough for one face. GPU only as a last resort.
+    var delegates = ['CPU','GPU'];
     faceLandmarker=null;
     for(var i=0;i<delegates.length;i++){
       try{
