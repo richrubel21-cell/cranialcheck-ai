@@ -1,0 +1,2465 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1.0,maximum-scale=1.0,user-scalable=no"/>
+<meta name="apple-mobile-web-app-capable" content="yes"/>
+<meta name="theme-color" content="#1E88E5"/>
+<title>CranialCheck AI — Live Neurological Screening</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;600&family=Outfit:wght@400;600;700;800;900&family=Playfair+Display:wght@700;900&display=swap" rel="stylesheet">
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<style>
+*{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent}
+:root{
+  --blue:#1E88E5;--blue2:#1565C0;
+  --red:#dc2626;--redL:rgba(220,38,38,.09);
+  --amber:#d97706;--amberL:rgba(217,119,6,.09);
+  --green:#16a34a;--greenL:rgba(22,163,74,.09);
+  --info:#2563eb;--infoL:rgba(37,99,235,.09);
+  --purple:#7c3aed;
+  --tx:#0f172a;--tx2:#334155;--tx3:#64748b;
+  --border:#e2e8f0;--surface:#fff;--surface2:#f8fafc;--bg:#f0f4f8;
+  --f:'Outfit',system-ui,sans-serif;--m:'IBM Plex Mono',monospace;
+  --safe-b:env(safe-area-inset-bottom,0px);
+  --safe-t:env(safe-area-inset-top,0px);
+}
+html,body{height:100%;}
+body{font-family:var(--f);background:#000;-webkit-font-smoothing:antialiased}
+
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:.3}}
+@keyframes ring{0%{transform:scale(1);opacity:.6}100%{transform:scale(2);opacity:0}}
+@keyframes itemPop{from{opacity:0;transform:translateY(12px) scale(.85)}to{opacity:1;transform:none}}
+@keyframes sheetUp{from{transform:translateY(100%)}to{transform:translateY(0)}}
+@keyframes sheetDown{from{transform:translateY(0)}to{transform:translateY(110%)}}
+@keyframes fadeIn{from{opacity:0}to{opacity:1}}
+@keyframes alertBounce{0%,100%{box-shadow:0 0 0 0 rgba(220,38,38,.4)}70%{box-shadow:0 0 0 12px rgba(220,38,38,0)}}
+@keyframes panelIn{from{opacity:0;transform:scale(.96)}to{opacity:1;transform:none}}
+@keyframes scanline{0%{top:-4px}100%{top:100%}}
+@keyframes scorePop{0%{transform:scale(1)}50%{transform:scale(1.15)}100%{transform:scale(1)}}
+
+/* ── LAYOUT ── */
+.app{position:fixed;inset:0;background:#000;overflow:hidden}
+.topbar{position:absolute;top:0;left:0;right:0;z-index:60;padding-top:var(--safe-t);background:rgba(255,255,255,.96);border-bottom:1px solid var(--border);box-shadow:0 1px 8px rgba(0,0,0,.05);overflow:visible}
+.topbar-inner{height:52px;display:flex;align-items:center;justify-content:space-between;padding:0 12px}
+.t-left{display:flex;align-items:center;gap:8px}
+.back-btn{width:34px;height:34px;border-radius:9px;border:1px solid var(--border);background:var(--surface2);display:flex;align-items:center;justify-content:center;font-size:20px;color:var(--tx2);cursor:pointer;text-decoration:none;flex-shrink:0}
+.t-logo{display:flex;align-items:center;gap:8px;cursor:pointer}
+.t-mark{width:32px;height:32px;border-radius:9px;background:linear-gradient(135deg,#0A1E38,#143656);display:flex;align-items:center;justify-content:center;flex-shrink:0;box-shadow:0 3px 10px rgba(10,30,56,.25)}
+.t-name{font-family:'Playfair Display',serif;font-weight:700;font-size:16px;color:#0A1E38;letter-spacing:.2px}
+.t-name span{color:var(--blue)}
+.t-right{display:flex;align-items:center;gap:8px}
+.live-pill{display:flex;align-items:center;gap:5px;background:var(--greenL);border:1px solid rgba(22,163,74,.2);padding:4px 10px;border-radius:20px;font-size:11px;font-weight:700;color:var(--green);font-family:var(--m)}
+.live-dot{width:6px;height:6px;border-radius:50%;background:var(--green);animation:pulse 1.5s infinite}
+
+/* ── MODE BAR ── */
+.mode-bar{display:flex;align-items:flex-start;gap:6px;padding:8px 12px;border-top:1px solid var(--border);overflow-x:auto;background:var(--surface2)}
+.mode-bar::-webkit-scrollbar{display:none}
+.mode-wrap{display:flex;flex-direction:column;align-items:center;gap:3px;flex-shrink:0;min-width:74px}
+.mode-btn{width:100%;padding:6px 12px;border-radius:20px;border:1px solid var(--border);background:var(--surface);font-size:11px;font-weight:700;color:var(--tx2);cursor:pointer;font-family:var(--f);white-space:nowrap;transition:all .2s;text-align:center}
+.mode-btn.on{background:linear-gradient(135deg,#1E88E5,#42A5F5);color:#fff;border-color:transparent;box-shadow:0 3px 12px rgba(30,136,229,.35)}
+.mode-btn.red-on{background:var(--red);color:#fff;border-color:var(--red)}
+.mode-lbl{font-size:8px;color:var(--tx3);text-align:center;line-height:1.3;padding:0 2px;font-weight:500;word-break:break-word;white-space:normal;max-width:72px}
+
+/* ── VIDEO ── */
+.video-wrap{position:absolute;inset:0;background:#000}
+#webcam{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;transform:scaleX(-1)}
+/* Canvas is NOT CSS-mirrored or object-fit'd. Buffer = box×DPR; mesh is mapped onto the
+   cover-cropped video via JS coverMap() (mirroring baked into the math). This is the only
+   reliable way to align a mesh over an object-fit:cover video on mobile. */
+#meshCanvas{position:absolute;inset:0;width:100%;height:100%;pointer-events:none}
+
+/* ── START SCREEN — branded dark hero, matches landing page ── */
+@keyframes spin{to{transform:rotate(360deg)}}
+@keyframes floatY{0%,100%{transform:translateY(0)}50%{transform:translateY(-8px)}}
+.start-screen{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:18px;padding:28px;text-align:center;z-index:20;background:radial-gradient(120% 90% at 50% 0%,#0C2A4A 0%,#081526 70%);color:#fff;overflow:hidden}
+.start-screen::before{content:'';position:absolute;inset:0;background:url("data:image/svg+xml,%3Csvg width='80' height='80' viewBox='0 0 80 80' xmlns='http://www.w3.org/2000/svg'%3E%3Cg fill='%2390CAF9' fill-opacity='0.05'%3E%3Ccircle cx='10' cy='10' r='2'/%3E%3Ccircle cx='50' cy='30' r='1.5'/%3E%3Ccircle cx='25' cy='60' r='1.5'/%3E%3Ccircle cx='70' cy='65' r='2'/%3E%3C/g%3E%3C/svg%3E");pointer-events:none}
+.start-mark{width:84px;height:84px;border-radius:22px;background:linear-gradient(135deg,#0A1E38,#143656);display:flex;align-items:center;justify-content:center;box-shadow:0 12px 36px rgba(10,30,56,.5);position:relative;overflow:hidden;animation:floatY 5s ease-in-out infinite}
+.start-mark::after{content:'';position:absolute;width:140%;height:140%;background:conic-gradient(from 0deg,transparent,rgba(144,202,249,.35),transparent,rgba(144,202,249,.18),transparent);animation:spin 6s linear infinite}
+.start-mark svg{position:relative;z-index:2}
+.start-tag{position:relative;z-index:2;display:inline-flex;align-items:center;gap:8px;background:rgba(144,202,249,.12);border:1px solid rgba(144,202,249,.28);padding:6px 16px;border-radius:999px;font-size:10.5px;font-weight:700;color:#90CAF9;text-transform:uppercase;letter-spacing:1.5px}
+.start-tag .dot{width:7px;height:7px;border-radius:50%;background:#90CAF9;box-shadow:0 0 10px rgba(144,202,249,.7);animation:pulse 2s infinite}
+.start-icon{display:none}
+.start-title{position:relative;z-index:2;font-family:'Playfair Display',serif;font-size:30px;font-weight:900;line-height:1.18;color:#fff;max-width:340px}
+.start-title .accent{color:#90CAF9}
+.start-title .gold{color:#D4A853;font-style:italic}
+.start-sub{position:relative;z-index:2;font-size:14px;color:rgba(255,255,255,.62);line-height:1.7;max-width:320px}
+.start-btn{position:relative;z-index:2;width:100%;max-width:340px;padding:18px 36px;border-radius:14px;background:linear-gradient(135deg,#1E88E5,#42A5F5);color:#fff;font-weight:800;font-size:16px;border:none;cursor:pointer;font-family:var(--f);box-shadow:0 10px 32px rgba(30,136,229,.5);letter-spacing:.3px;transition:transform .2s,box-shadow .2s;margin-top:4px}
+.start-btn:hover{transform:translateY(-2px);box-shadow:0 16px 40px rgba(30,136,229,.6)}
+.start-foot{position:relative;z-index:2;display:flex;gap:18px;flex-wrap:wrap;justify-content:center;margin-top:6px;font-size:11px;color:rgba(255,255,255,.5);font-family:var(--m)}
+.start-foot span{display:inline-flex;align-items:center;gap:5px}
+
+/* ── STATUS BANNER ── */
+.status-banner{position:absolute;top:112px;left:12px;right:12px;background:rgba(255,255,255,.92);border:1px solid rgba(30,136,229,.3);border-radius:14px;padding:12px 18px;text-align:center;box-shadow:0 4px 20px rgba(10,30,56,.12);z-index:50;pointer-events:auto;max-width:calc(100vw - 24px);backdrop-filter:blur(8px);color:#0A1E38}
+.sb-title{font-size:15px;font-weight:800;color:#0A1E38}
+.sb-sub{font-size:11px;color:#4A5B73;font-family:var(--m);margin-top:3px}
+.status-banner.complete{border-color:rgba(22,163,74,.5);background:rgba(240,253,244,.95)}
+.status-banner.complete .sb-title{color:#16a34a}
+
+/* ── CN PROMPT — slim banner just below status banner ── */
+.cn-prompt{position:absolute;top:128px;left:0;right:0;z-index:55;pointer-events:none;background:rgba(255,255,255,.92);backdrop-filter:blur(8px);border-bottom:2px solid rgba(30,136,229,.4);padding:10px 16px;display:flex;align-items:center;gap:12px;color:#0A1E38}
+.cn-prompt-emoji{font-size:26px;flex-shrink:0;line-height:1}
+.cn-prompt-title{font-size:13px;font-weight:800;color:#0A1E38;line-height:1.25;overflow:hidden;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical}
+.cn-prompt-sub{font-size:9px;color:#4A5B73;font-family:var(--m);margin-top:2px;overflow:hidden;white-space:nowrap;text-overflow:ellipsis}
+.cn-progress{position:absolute;bottom:0;left:0;right:0;height:3px;background:#E2E8F0}
+.cn-progress-fill{height:100%;background:var(--blue);transition:width 3s linear}
+
+/* ── AI SCORES PANEL ── */
+.scores-panel{position:absolute;top:128px;right:8px;background:rgba(255,255,255,.92);border:1px solid #E2E8F0;border-radius:10px;padding:7px 10px;z-index:50;width:100px;max-width:100px;backdrop-filter:blur(8px);box-shadow:0 4px 16px rgba(10,30,56,.1)}
+.score-row{display:flex;justify-content:space-between;align-items:center;padding:3px 0;border-bottom:1px solid #E2E8F0;font-size:9px;gap:4px}
+.score-row:last-child{border:none}
+.score-label{color:#4A5B73;font-family:var(--m);flex-shrink:0}
+.score-val{font-family:var(--m);font-weight:700;font-size:9px;text-align:right}
+.score-val.good{color:#16a34a}
+.score-val.warn{color:#d97706}
+.score-val.bad{color:#dc2626}
+.score-val.pending{color:#94a3b8}
+
+/* ── ALERT ── */
+.alert-box{position:absolute;top:170px;left:12px;right:12px;background:rgba(127,29,29,.9);border:1px solid rgba(220,38,38,.5);border-radius:12px;padding:10px 16px;z-index:50;display:flex;align-items:center;gap:9px;pointer-events:auto;cursor:pointer;animation:alertBounce 2s infinite;max-width:calc(100vw - 24px);box-shadow:0 4px 16px rgba(220,38,38,.3);backdrop-filter:blur(8px)}
+.alert-title{font-size:12px;font-weight:700;color:#fca5a5}
+.alert-sub{font-size:10px;color:rgba(252,165,165,.7);margin-top:1px}
+
+/* ── CAM INFO ── */
+.cam-info{position:absolute;bottom:calc(46px + var(--safe-b));left:14px;display:flex;align-items:center;gap:6px;background:rgba(255,255,255,.85);border:1px solid #E2E8F0;padding:4px 10px;border-radius:20px;font-family:var(--m);font-size:9px;color:#4A5B73;z-index:40;box-shadow:0 2px 10px rgba(10,30,56,.1)}
+
+/* ── FAB ── */
+.fab-wrap{position:absolute;bottom:calc(24px + var(--safe-b));right:12px;z-index:70}
+.fab-ring{position:absolute;inset:-5px;border-radius:50%;border:2px solid rgba(30,136,229,.5);animation:ring 1.8s ease-out infinite}
+.fab-ring2{position:absolute;inset:-5px;border-radius:50%;border:2px solid rgba(30,136,229,.3);animation:ring 1.8s ease-out .6s infinite}
+.fab{width:70px;height:70px;border-radius:50%;background:linear-gradient(135deg,#1E88E5,#1565C0);border:none;cursor:pointer;position:relative;z-index:2;display:flex;align-items:center;justify-content:center;flex-direction:column;gap:2px;color:#fff;font-size:9px;font-weight:800;font-family:var(--f);letter-spacing:.2px;text-align:center;line-height:1.2;box-shadow:0 4px 20px rgba(30,136,229,.5);transition:transform .15s}
+.fab:active{transform:scale(.91)}
+.fab-icon{font-size:18px;line-height:1}
+.fab-items{position:absolute;bottom:78px;right:0;display:flex;flex-direction:column;align-items:flex-end;gap:9px;pointer-events:none;opacity:0;transition:opacity .18s}
+.fab-items.open{pointer-events:auto;opacity:1}
+.fab-item{display:flex;align-items:center;gap:9px;opacity:0}
+.fab-items.open .fab-item:nth-child(1){animation:itemPop .22s .04s cubic-bezier(.22,1,.36,1) forwards}
+.fab-items.open .fab-item:nth-child(2){animation:itemPop .22s .08s cubic-bezier(.22,1,.36,1) forwards}
+.fab-items.open .fab-item:nth-child(3){animation:itemPop .22s .12s cubic-bezier(.22,1,.36,1) forwards}
+.fab-items.open .fab-item:nth-child(4){animation:itemPop .22s .16s cubic-bezier(.22,1,.36,1) forwards}
+.fab-items.open .fab-item:nth-child(5){animation:itemPop .22s .20s cubic-bezier(.22,1,.36,1) forwards}
+.fab-items.open .fab-item:nth-child(6){animation:itemPop .22s .24s cubic-bezier(.22,1,.36,1) forwards}
+.fi-label{background:rgba(255,255,255,.97);border:1px solid var(--border);border-radius:10px;padding:6px 14px;font-size:12px;font-weight:700;color:var(--tx);box-shadow:0 3px 12px rgba(0,0,0,.15);white-space:nowrap}
+.fi-btn{width:44px;height:44px;border-radius:50%;border:none;cursor:pointer;display:flex;align-items:center;justify-content:center;font-size:18px;box-shadow:0 3px 12px rgba(0,0,0,.2);transition:transform .15s;flex-shrink:0}
+.fi-btn:active{transform:scale(.88)}
+.fi-btn.alerting{animation:alertBounce 2s infinite}
+
+/* ── REPLAY ── */
+.replay-btn{position:absolute;bottom:calc(140px + var(--safe-b));left:12px;z-index:70;background:rgba(255,255,255,.95);border:1px solid var(--border);border-radius:24px;padding:9px 16px;font-size:12px;font-weight:700;color:var(--tx2);display:flex;align-items:center;gap:6px;cursor:pointer;box-shadow:0 2px 12px rgba(0,0,0,.2)}
+.replay-btn:active{transform:scale(.97)}
+
+/* ── SCRIM / SHEET ── */
+.scrim{position:fixed;inset:0;background:rgba(15,23,42,.5);backdrop-filter:blur(3px);z-index:65;animation:fadeIn .2s}
+.sheet{position:fixed;bottom:0;left:0;right:0;z-index:70;background:var(--surface);border-radius:22px 22px 0 0;box-shadow:0 -8px 40px rgba(0,0,0,.2);max-height:84vh;display:flex;flex-direction:column;animation:sheetUp .3s cubic-bezier(.22,1,.36,1);padding-bottom:var(--safe-b)}
+.sheet.closing{animation:sheetDown .26s cubic-bezier(.36,0,.66,0) forwards}
+.sh-handle{width:36px;height:4px;border-radius:2px;background:#cbd5e1;margin:10px auto 0;flex-shrink:0;cursor:pointer}
+.sh-header{padding:14px 18px 12px;border-bottom:1px solid var(--border);flex-shrink:0;display:flex;align-items:center;justify-content:space-between}
+.sh-title{display:flex;align-items:center;gap:10px;font-size:17px;font-weight:800;color:var(--tx)}
+.sh-icon{width:36px;height:36px;border-radius:10px;display:flex;align-items:center;justify-content:center;font-size:18px}
+.sh-close{width:30px;height:30px;border-radius:50%;border:1px solid var(--border);background:var(--surface2);cursor:pointer;display:flex;align-items:center;justify-content:center;font-size:18px;color:var(--tx2)}
+.sh-tabs{display:flex;border-bottom:1px solid var(--border);flex-shrink:0}
+.stab{flex:1;padding:11px 6px;font-size:13px;font-weight:600;color:var(--tx3);border:none;background:transparent;cursor:pointer;border-bottom:2.5px solid transparent;font-family:var(--f);transition:all .15s}
+.stab.on{color:var(--blue);border-bottom-color:var(--blue)}
+.sh-body{overflow-y:auto;-webkit-overflow-scrolling:touch;flex:1;padding:18px}
+.cards{display:flex;flex-direction:column;gap:12px}
+.card{display:flex;gap:12px;align-items:flex-start;padding:14px;border-radius:14px;border:1px solid transparent}
+.card.good{background:var(--greenL);border-color:rgba(22,163,74,.18)}
+.card.warn{background:var(--amberL);border-color:rgba(217,119,6,.18)}
+.card.alert{background:var(--redL);border-color:rgba(220,38,38,.18)}
+.card.info{background:var(--infoL);border-color:rgba(37,99,235,.13)}
+.card.base{background:var(--surface2);border-color:var(--border)}
+.card-emoji{font-size:22px;flex-shrink:0;line-height:1.2;margin-top:1px}
+.card-title{font-size:14px;font-weight:700;color:var(--tx);margin-bottom:3px}
+.card-body{font-size:13px;color:var(--tx2);line-height:1.65}
+.cc{display:flex;flex-direction:column;gap:11px}
+.ccard{background:var(--surface2);border:1px solid var(--border);border-radius:13px;padding:14px}
+.cc-top{display:flex;justify-content:space-between;align-items:center;margin-bottom:7px}
+.cc-lbl{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:1px;color:var(--tx3)}
+.cc-val{font-family:var(--m);font-size:19px;font-weight:700}
+.cc-bar{height:4px;border-radius:2px;background:var(--border);overflow:hidden;margin-bottom:8px}
+.cc-fill{height:100%;border-radius:2px;transition:width .8s cubic-bezier(.22,1,.36,1)}
+.cc-row{display:flex;justify-content:space-between;font-size:12px;padding:4px 0;border-bottom:1px solid var(--border)}
+.cc-row:last-child{border:none}
+.cc-rl{color:var(--tx2)}.cc-rv{font-family:var(--m);font-weight:600;color:var(--tx)}
+.cc-rv.r{color:var(--red)}.cc-rv.a{color:var(--amber)}.cc-rv.g{color:var(--green)}
+.cn-pills{display:grid;grid-template-columns:repeat(5,1fr);gap:4px;margin-top:5px}
+.cnp{padding:5px 2px;border-radius:7px;text-align:center;font-family:var(--m);font-size:9px;font-weight:600}
+.cnp.pass{background:var(--greenL);color:var(--green);border:1px solid rgba(22,163,74,.2)}
+.cnp.pend{background:var(--surface);color:var(--tx3);border:1px solid var(--border)}
+.cnp.fail{background:var(--redL);color:var(--red);border:1px solid rgba(220,38,38,.2)}
+
+@media(min-width:768px){
+  .sheet{position:fixed;bottom:auto;left:auto;top:50%;right:20px;transform:translateY(-50%);width:400px;max-height:88vh;border-radius:20px;animation:panelIn .25s ease;padding-bottom:0}
+  .sheet.closing{animation:none;opacity:0;transition:opacity .2s}
+  .fab-wrap{bottom:30px;right:24px}
+}
+@media(max-width:767px){
+  .alert-box{top:170px;left:12px;right:12px;bottom:auto;transform:none;min-width:0;max-width:none;width:auto}
+  .status-banner{top:112px;left:12px;right:12px;bottom:auto;transform:none;min-width:0;max-width:none;width:auto}
+}
+
+/* ── ACCESS GATE ── */
+@keyframes shake{0%,100%{transform:translateX(0)}20%{transform:translateX(-9px)}40%{transform:translateX(9px)}60%{transform:translateX(-6px)}80%{transform:translateX(6px)}}
+.gate{position:fixed;inset:0;z-index:300;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:16px;padding:28px;text-align:center;background:linear-gradient(160deg,#F2F5F9,#E8EDF4);transition:opacity .5s}
+.gate.hide{opacity:0;pointer-events:none}
+.gate-logo{display:flex;align-items:center;gap:12px;margin-bottom:6px}
+.gate-mark{width:54px;height:54px;border-radius:15px;background:linear-gradient(135deg,#0A1E38,#143656);display:flex;align-items:center;justify-content:center;box-shadow:0 8px 24px rgba(10,30,56,.3)}
+.gate-word{font-family:'Playfair Display',serif;font-size:26px;font-weight:700;color:#0A1E38}
+.gate-word span{color:#1E88E5}
+.gate-sub{font-size:14px;color:#4A5B73;line-height:1.6;max-width:320px}
+.gate-input{width:100%;max-width:300px;font-family:'IBM Plex Mono',monospace;letter-spacing:3px;font-size:15px;text-align:center;padding:14px 16px;border-radius:12px;border:1.5px solid #E2E8F0;background:#fff;color:#0A1E38;outline:none;transition:border-color .2s}
+.gate-input:focus{border-color:#1E88E5}
+.gate-input.shake{animation:shake .4s}
+.gate-btn{width:100%;max-width:300px;padding:14px;border-radius:12px;background:linear-gradient(135deg,#1E88E5,#1565C0);color:#fff;font-weight:800;font-size:14px;letter-spacing:1px;border:none;cursor:pointer;font-family:'Outfit',sans-serif;box-shadow:0 6px 20px rgba(30,136,229,.4)}
+.gate-err{font-size:12px;color:#dc2626;font-weight:700;min-height:16px}
+.gate-contact{font-size:12px;color:#4A5B73;margin-top:8px}
+
+/* ── RESULTS SCREEN ── */
+.results{position:fixed;inset:0;z-index:80;background:linear-gradient(160deg,#F2F5F9,#E8EDF4);display:flex;flex-direction:column;transform:translateY(100%);transition:transform .45s cubic-bezier(.22,1,.36,1);padding-top:var(--safe-t)}
+.results.show{transform:translateY(0)}
+.results-scroll{flex:1;overflow-y:auto;-webkit-overflow-scrolling:touch;padding:20px 18px calc(28px + var(--safe-b))}
+.res-head{display:flex;align-items:center;justify-content:space-between;margin-bottom:16px}
+.res-head-title{font-family:'Playfair Display',serif;font-size:20px;font-weight:700;color:#0A1E38}
+.res-close{width:34px;height:34px;border-radius:50%;border:1px solid #E2E8F0;background:#fff;font-size:20px;color:#4A5B73;cursor:pointer}
+.res-status{border-radius:18px;padding:22px;text-align:center;margin-bottom:14px;border:1.5px solid}
+.res-status-icon{font-size:40px;line-height:1;margin-bottom:6px}
+.res-status-label{font-family:'Outfit',sans-serif;font-size:24px;font-weight:900;letter-spacing:1px}
+.res-status-txt{font-size:13px;color:#4A5B73;margin-top:6px;line-height:1.6}
+.res-conf{display:inline-flex;align-items:center;gap:7px;background:#fff;border:1px solid #E2E8F0;border-radius:20px;padding:6px 14px;font-size:12px;font-weight:700;color:#0A1E38;margin-top:12px;font-family:'IBM Plex Mono',monospace}
+.s-normal{background:rgba(240,253,244,.9);border-color:rgba(22,163,74,.4)}.s-normal .res-status-label{color:#16a34a}
+.s-watch{background:rgba(255,251,235,.9);border-color:rgba(217,119,6,.4)}.s-watch .res-status-label{color:#d97706}
+.s-flag{background:rgba(255,247,237,.9);border-color:rgba(234,88,12,.45)}.s-flag .res-status-label{color:#ea580c}
+.s-urgent{background:rgba(254,242,242,.9);border-color:rgba(220,38,38,.5)}.s-urgent .res-status-label{color:#dc2626}
+.s-invalid{background:rgba(241,245,249,.95);border-color:#cbd5e1}.s-invalid .res-status-label{color:#64748b}
+.res-domains{display:flex;flex-direction:column;gap:11px;margin-bottom:18px}
+.res-dom{background:#fff;border:1px solid #E2E8F0;border-radius:14px;padding:14px 16px;display:flex;align-items:center;gap:13px}
+.res-dom-emoji{font-size:24px;flex-shrink:0;line-height:1}
+.res-dom-main{flex:1;min-width:0}
+.res-dom-name{font-size:14px;font-weight:700;color:#0A1E38}
+.res-dom-metric{font-size:12px;color:#4A5B73;font-family:'IBM Plex Mono',monospace;margin-top:2px}
+.res-dom-flag{font-size:11px;font-weight:800;padding:4px 10px;border-radius:20px;font-family:'Outfit',sans-serif;flex-shrink:0}
+.flag-good{background:rgba(22,163,74,.12);color:#16a34a}
+.flag-warn{background:rgba(217,119,6,.12);color:#d97706}
+.flag-bad{background:rgba(220,38,38,.12);color:#dc2626}
+.res-actions{display:flex;flex-direction:column;gap:10px;margin-bottom:16px}
+.res-btn{padding:15px;border-radius:13px;font-weight:800;font-size:14px;border:none;cursor:pointer;font-family:'Outfit',sans-serif;letter-spacing:.5px}
+.res-btn.primary{background:linear-gradient(135deg,#1E88E5,#1565C0);color:#fff;box-shadow:0 6px 20px rgba(30,136,229,.35)}
+.res-btn.primary:disabled{opacity:.5;cursor:not-allowed;box-shadow:none}
+.res-btn.outline{background:#fff;border:1.5px solid #1E88E5;color:#1E88E5}
+.res-disclaim{font-size:11px;color:#94a3b8;text-align:center;line-height:1.6;padding:0 8px}
+</style>
+</head>
+<body>
+
+<!-- ACCESS GATE -->
+<div class="gate" id="gate">
+  <div class="gate-logo">
+    <div class="gate-mark">
+      <svg viewBox="0 0 28 28" width="30" height="30" fill="none">
+        <circle cx="14" cy="14" r="10" stroke="#90CAF9" stroke-width="1.5" opacity=".6"/>
+        <circle cx="14" cy="14" r="5" stroke="#90CAF9" stroke-width="1.5"/>
+        <circle cx="14" cy="14" r="2" fill="#1E88E5"/>
+        <line x1="14" y1="4" x2="14" y2="9" stroke="#90CAF9" stroke-width="1" opacity=".5"/>
+        <line x1="14" y1="19" x2="14" y2="24" stroke="#90CAF9" stroke-width="1" opacity=".5"/>
+        <line x1="4" y1="14" x2="9" y2="14" stroke="#90CAF9" stroke-width="1" opacity=".5"/>
+        <line x1="19" y1="14" x2="24" y2="14" stroke="#90CAF9" stroke-width="1" opacity=".5"/>
+      </svg>
+    </div>
+    <div class="gate-word">CranialCheck<span> AI</span></div>
+  </div>
+  <div class="gate-sub">Access restricted to authorized clinical and investor partners.</div>
+  <input class="gate-input" id="gateInput" type="password" placeholder="ACCESS CODE" autocomplete="off" autocapitalize="off" spellcheck="false" onkeydown="if(event.key==='Enter')checkGate()"/>
+  <button class="gate-btn" onclick="checkGate()">ACCESS DEMO</button>
+  <div class="gate-err" id="gateErr"></div>
+  <div class="gate-contact">Contact rich.rubel@predictwellhealth.ai for access</div>
+</div>
+
+<!-- RESULTS SCREEN -->
+<div class="results" id="results">
+  <div class="results-scroll" id="resultsBody"></div>
+</div>
+
+<div class="app" id="app">
+
+  <!-- TOPBAR -->
+  <div class="topbar">
+    <div class="topbar-inner">
+      <div class="t-left">
+        <a class="back-btn" href="index.html">&#8249;</a>
+        <div class="t-logo" onclick="window.location.href='index.html'">
+          <div class="t-mark">
+            <svg viewBox="0 0 28 28" width="18" height="18" fill="none">
+              <circle cx="14" cy="14" r="10" stroke="#90CAF9" stroke-width="1.5" opacity=".6"/>
+              <circle cx="14" cy="14" r="5" stroke="#90CAF9" stroke-width="1.5"/>
+              <circle cx="14" cy="14" r="2" fill="#1E88E5"/>
+            </svg>
+          </div>
+          <div class="t-name">CranialCheck<span>AI</span></div>
+        </div>
+      </div>
+      <div class="t-right">
+        <div class="live-pill"><div class="live-dot"></div>LIVE</div>
+      </div>
+    </div>
+    <div class="mode-bar">
+      <div class="mode-wrap">
+        <button class="mode-btn on" onclick="startExam()">▶ TRIAGE</button>
+        <div class="mode-lbl">90-sec screen</div>
+      </div>
+      <div class="mode-wrap">
+        <button class="mode-btn" onclick="switchCamera()">🔄 Camera</button>
+        <div class="mode-lbl">Flip front/back</div>
+      </div>
+      <div class="mode-wrap">
+        <button class="mode-btn" onclick="resetExam()">↺ Reset</button>
+        <div class="mode-lbl">Clear & restart</div>
+      </div>
+      <div class="mode-wrap">
+        <button class="mode-btn" id="audioBtn" onclick="toggleAudio()">🔊 Audio</button>
+        <div class="mode-lbl">Voice on/off</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- VIDEO -->
+  <div class="video-wrap">
+    <div class="start-screen" id="startScreen">
+      <div class="start-mark">
+        <svg viewBox="0 0 28 28" width="38" height="38" fill="none">
+          <circle cx="14" cy="14" r="10" stroke="#90CAF9" stroke-width="1.5" opacity=".6"/>
+          <circle cx="14" cy="14" r="5" stroke="#90CAF9" stroke-width="1.5"/>
+          <circle cx="14" cy="14" r="2" fill="#1E88E5"/>
+          <line x1="14" y1="4" x2="14" y2="9" stroke="#90CAF9" stroke-width="1" opacity=".5"/>
+          <line x1="14" y1="19" x2="14" y2="24" stroke="#90CAF9" stroke-width="1" opacity=".5"/>
+          <line x1="4" y1="14" x2="9" y2="14" stroke="#90CAF9" stroke-width="1" opacity=".5"/>
+          <line x1="19" y1="14" x2="24" y2="14" stroke="#90CAF9" stroke-width="1" opacity=".5"/>
+        </svg>
+      </div>
+      <div class="start-tag"><span class="dot"></span> TRIAGE · 90-Second Screen</div>
+      <div class="start-title">Zero-Hardware <span class="accent">Neurological</span> Screening <span class="gold">in your browser</span></div>
+      <div class="start-sub">Six rapid checks — alertness, facial motor, eye-opening, tongue, and head stability. No app, no hardware. Position your face and let the AI guide you.</div>
+      <button class="start-btn" onclick="initCamera()">Begin Screening →</button>
+      <div class="start-foot">
+        <span>🔒 On-device</span><span>👁️ 478 landmarks</span><span>⚡ &lt;0.5s latency</span>
+      </div>
+    </div>
+    <video id="webcam" autoplay playsinline muted style="display:none"></video>
+    <canvas id="meshCanvas" style="display:none"></canvas>
+  </div>
+
+  <!-- CN PROMPT - slim strip, never covers face -->
+  <div class="cn-prompt" id="cnPrompt" style="display:none">
+    <span class="cn-prompt-emoji" id="cnEmoji">👁️</span>
+    <div style="flex:1;min-width:0">
+      <div class="cn-prompt-title" id="cnPromptTitle">Look at the center dot</div>
+      <div class="cn-prompt-sub" id="cnPromptSub">Testing CN II — Visual fixation</div>
+    </div>
+    <div class="cn-progress"><div class="cn-progress-fill" id="cnProgressFill" style="width:0%"></div></div>
+  </div>
+
+  <!-- AI SCORES PANEL -->
+  <div class="scores-panel" id="scoresPanel" style="display:none">
+    <div class="score-row"><span class="score-label">Eyes</span><span class="score-val pending" id="sFixation">—</span></div>
+    <div class="score-row"><span class="score-label">Track</span><span class="score-val pending" id="sGaze">—</span></div>
+    <div class="score-row"><span class="score-label">Symmetry</span><span class="score-val pending" id="sSmile">—</span></div>
+    <div class="score-row"><span class="score-label">Head</span><span class="score-val pending" id="sJaw">—</span></div>
+    <div class="score-row"><span class="score-label">Mouth</span><span class="score-val pending" id="sMouth">—</span></div>
+  </div>
+
+  <!-- STATUS BANNER -->
+  <div class="status-banner" id="statusBanner" style="display:none">
+    <div class="sb-title" id="sbTitle">Initializing...</div>
+    <div class="sb-sub" id="sbSub">Loading AI model</div>
+  </div>
+
+  <!-- ALERT -->
+  <div class="alert-box" id="alertBox" style="display:none">
+    <div style="font-size:18px;flex-shrink:0">🚨</div>
+    <div>
+      <div class="alert-title" id="alertTitle">Assessment findings flagged</div>
+      <div class="alert-sub">Tap to see clinical details</div>
+    </div>
+  </div>
+
+  <!-- CAM INFO -->
+  <div class="cam-info" id="camInfo" style="display:none">
+    <div style="width:5px;height:5px;border-radius:50%;background:#4ade80;animation:pulse 1.5s infinite"></div>
+    <span id="camInfoText">Front Camera • 478 landmarks • 30 FPS</span>
+  </div>
+
+  <!-- FAB — hidden during TRIAGE; shown after results to re-open them (legacy sheets removed) -->
+  <div class="fab-wrap" id="fabWrap" style="display:none">
+    <div class="fab-ring"></div><div class="fab-ring2"></div>
+    <button class="fab" id="fab" onclick="showResults()">
+      <div class="fab-icon">📊</div><div>See Results</div>
+    </button>
+  </div>
+
+  <!-- REPLAY -->
+  <button class="replay-btn" id="replayBtn" onclick="resetExam()" style="display:none">↺ Replay Demo</button>
+
+  <!-- SCRIM + SHEET -->
+  <div id="scrim" class="scrim" style="display:none" onclick="closeSheet()"></div>
+  <div id="sheet" class="sheet" style="display:none">
+    <div class="sh-handle" onclick="closeSheet()"></div>
+    <div class="sh-header">
+      <div class="sh-title"><div class="sh-icon" id="shIcon"></div><span id="shTitle2"></span></div>
+      <button class="sh-close" onclick="closeSheet()">×</button>
+    </div>
+    <div class="sh-tabs">
+      <button class="stab on" id="tabPlain" onclick="switchTab('plain')">For Patients & Family</button>
+      <button class="stab" id="tabClin" onclick="switchTab('clin')">Clinical Data</button>
+    </div>
+    <div class="sh-body" id="shBody"></div>
+  </div>
+</div>
+
+<!-- MediaPipe Tasks Vision -->
+<!-- MediaPipe tasks-vision is loaded as an ES module via dynamic import() in loadFaceLandmarker()
+     (the UMD vision_bundle.js does not exist — only vision_bundle.mjs / .cjs). Pinned to 0.10.35. -->
+
+<script>
+const SUPABASE_URL = 'https://rtklrkslujbbprkpyghc.supabase.co';
+const SUPABASE_ANON = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InJ0a2xya3NsdWpiYnBya3B5Z2hjIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODIwNDUzMjYsImV4cCI6MjA5NzYyMTMyNn0.IK8uZKlnThrLnMH_obh_XCI8hF_wcKkRNxmUtKJE0tI';
+// Defensive init: if the Supabase CDN is blocked/unreachable, the exam must still run (just won't save).
+const sb = (function(){
+  try{ if(typeof supabase!=='undefined' && supabase && supabase.createClient){ return supabase.createClient(SUPABASE_URL, SUPABASE_ANON); } }
+  catch(e){ console.warn('[CC] Supabase init failed:', e && e.message); }
+  console.warn('[CC] Supabase unavailable — exam will run but results will not be saved.');
+  return null;
+})();
+'use strict';
+
+// ═══════════════════════════════════════════════════
+// CRANIALCHECK AI ENGINE
+// MediaPipe FaceLandmarker + Iris + Temporal Scoring
+// ChatGPT/DeepSeek landmark indices integrated
+// ═══════════════════════════════════════════════════
+
+// ── STATE ──
+var cameraActive=false, facingMode='user', examRunning=false;
+var fabOpen=false, activeSheet=null, activeTab='plain';
+var audioEnabled=true, voices=[], femaleVoice=null;
+var stream=null, faceLandmarker=null;
+var frameCount=0, lastFpsTime=Date.now(), fps=0;
+var animFrame=null;
+
+// ── GAZE SMOOTHING (3-frame rolling average) ──
+var GAZE_SMOOTH={h:[],v:[],len:3};
+function smoothGaze(h,v){
+  GAZE_SMOOTH.h.push(h);GAZE_SMOOTH.v.push(v);
+  if(GAZE_SMOOTH.h.length>GAZE_SMOOTH.len){GAZE_SMOOTH.h.shift();GAZE_SMOOTH.v.shift();}
+  var sh=GAZE_SMOOTH.h.reduce(function(a,b){return a+b;},0)/GAZE_SMOOTH.h.length;
+  var sv=GAZE_SMOOTH.v.reduce(function(a,b){return a+b;},0)/GAZE_SMOOTH.v.length;
+  return{h:sh,v:sv};
+}
+
+// ── ATTENTION TRACKING STATE ──
+var ATT={
+  active:false,
+  dotX:0.5, dotY:0.5,        // current dot position (0-1)
+  dotT:0,                     // time ms
+  dotDur:10000,               // 10 second task
+  frames:[],                  // {gx,gy,tx,ty,blink,t}
+  blinkCount:0,
+  lastEAR:1,
+  blinkInProgress:false,
+  result:null                 // filled after task
+};
+
+// ── TEMPORAL BUFFERS (90 frames ~3s) ──
+var BUF={
+  iris:[],mouth:[],smile:[],jaw:[],
+  flow:[],headPose:[],
+  maxLen:90
+};
+
+// ── BASELINE (captured during calibration) ──
+var BASE={
+  irisX:null, irisY:null,
+  jawW:null,
+  mouthSpread:null,
+  headYaw:null,
+  gazeH:null, gazeV:null  // gaze baseline for attention test
+};
+
+// ── TRIAGE MODE STATE (6-step screen) ──
+var TRIAGE={active:false, capturing:false, frames:[], baseEAR:null, baseYaw:null, baseAsym:null, baseMouth:null, result:null,
+            calibStability:0, lightingScore:0, capturedFrames:0, expectedFrames:0, stepsComplete:0,
+            startMs:0, renderFrames:0};
+var BLEND={};                                   // latest face blendshape scores
+var POSE={yaw:0,pitch:0,roll:0};                // latest head pose (degrees)
+
+// ── RUN DIAGNOSTICS — recorded on every exam so failures are visible in the admin ──
+var DIAG={
+  model_loaded:false, model_delegate:'none',    // set at model-load time (persists across re-runs)
+  face_detected:false,
+  calib_frames:0, perclos_frames:0, cn7_frames:0, gcs_frames:0, tongue_frames:0, head_frames:0,
+  irisSum:0, detectFrames:0,                     // → avg_iris_count
+  min_fps:null, max_fps:null,
+  errors:[]
+};
+function diagError(msg){ if(msg && DIAG.errors.length<25) DIAG.errors.push(String(msg)); }
+function resetDiagForExam(){
+  // Per-exam fields reset each run; model_loaded/model_delegate are kept (set once at load).
+  DIAG.face_detected=false;
+  DIAG.calib_frames=0; DIAG.perclos_frames=0; DIAG.cn7_frames=0;
+  DIAG.gcs_frames=0; DIAG.tongue_frames=0; DIAG.head_frames=0;
+  DIAG.irisSum=0; DIAG.detectFrames=0;
+  DIAG.min_fps=null; DIAG.max_fps=null;
+  DIAG.errors=[];
+}
+
+var TRIAGE_STEPS=[
+  {id:'calib',  emoji:'🎯', name:'Calibrating',        bannerSub:'Hold still — 2 seconds',                 title:'Hold still, looking at camera',                         sub:'Step 1 · Calibrating baseline',     dur:2000},
+  {id:'perclos',emoji:'👁️', name:'Alertness Screen',   bannerSub:'Keep eyes open — 30 seconds',            title:'Keep your eyes open and look at the camera',            sub:'Step 2 · PERCLOS alertness window', dur:30000},
+  {id:'cn7',    emoji:'😐', name:'Facial Symmetry',    bannerSub:'Relax your face and look at camera',      title:'Relax your face and look at the camera',                sub:'Step 3 · CN VII resting symmetry',  dur:10000},
+  {id:'gcs',    emoji:'⬆️', name:'Eye Opening',        bannerSub:'Open your eyes wide — 5 seconds',         title:'Open your eyes wide',                                   sub:'Step 4 · GCS eye-opening proxy',    dur:5000},
+  {id:'tongue', emoji:'👅', name:'Tongue Protrusion',  bannerSub:'Stick tongue out and hold — 10 seconds',  title:'Stick your tongue out as far as you can and hold it',    sub:'Step 5 · CN XII tongue protrusion', dur:10000},
+  {id:'head',   emoji:'🧭', name:'Head Stability',     bannerSub:'Hold your head perfectly still — 10 sec', title:'Look at the camera and hold your head perfectly still',  sub:'Step 6 · Head pose drift',          dur:10000}
+];
+
+// ── ASSESSMENT DATA ──
+var DATA={
+  cnR:{},
+  cnScores:{},
+  gcs:{e:'—',v:'—',m:'—',t:'—'},
+  cam:{s:'—',r:'—',a:'—',i:'—',d:'—',al:'—'},
+  fr:{c:'—',t:'—',g:'—',f:'—',s:'—'},
+  speech:{s:'—',score:0,label:'—',results:{},wpm:0,accuracy:0,sps:0,transcript:''},
+  examFindings:{}
+};
+
+// ── CN TEST SEQUENCE ──
+var CNT=[
+  {id:'II', emoji:'👁️', prompt:'Look at the center dot', voice:'Look at the center dot and hold still', desc:'Testing CN II — Visual fixation', dur:3000, act:'fixation'},
+  {id:'III',emoji:'⬆️', prompt:'Look UP slowly',          voice:'Please look up slowly',              desc:'Testing CN III — Superior gaze',  dur:3000, act:'gaze_up'},
+  {id:'IV', emoji:'↙️', prompt:'Look DOWN and INWARD',    voice:'Look down and inward',               desc:'Testing CN IV — Oblique gaze',    dur:3000, act:'gaze_down'},
+  {id:'V',  emoji:'😬', prompt:'Clench your JAW',         voice:'Clench your jaw and hold',           desc:'Testing CN V — Jaw muscle',       dur:3000, act:'jaw'},
+  {id:'VI', emoji:'👀', prompt:'Look LEFT then RIGHT',    voice:'Look left, then look right',         desc:'Testing CN VI — Lateral gaze',    dur:4000, act:'gaze_lr'},
+  {id:'VII',emoji:'😄', prompt:'SMILE widely',            voice:'Give us your biggest smile',         desc:'Testing CN VII — Facial symmetry',dur:3000, act:'smile'},
+  {id:'IX', emoji:'🗣️', prompt:'Open mouth, say AHHH',   voice:'Open your mouth and say ahhh',      desc:'Testing CN IX — Mouth opening',   dur:3000, act:'mouth'},
+  {id:'X',  emoji:'💧', prompt:'SWALLOW once',            voice:'Please swallow once',                desc:'Testing CN X — Swallow proxy',    dur:3000, act:'swallow'},
+  {id:'XI', emoji:'🤷', prompt:'Shrug your SHOULDERS',   voice:'Shrug both shoulders up',            desc:'Testing CN XI — Trapezius',       dur:3000, act:'shrug'},
+  {id:'XII',emoji:'👅', prompt:'Stick out your TONGUE',  voice:'Stick out your tongue',              desc:'Testing CN XII — Tongue midline', dur:3000, act:'tongue'},
+];
+
+// ── PULL TO REFRESH ──
+(function(){
+  var sY=0;
+  window.addEventListener('touchstart',function(e){sY=e.touches[0].clientY;},{passive:true,capture:true});
+  window.addEventListener('touchend',function(e){
+    var dy=e.changedTouches[0].clientY-sY;
+    var sheetOpen=document.getElementById('sheet')&&document.getElementById('sheet').style.display!=='none';
+    if(dy>150&&!sheetOpen)window.location.reload();
+  },{passive:true,capture:true});
+})();
+
+// ── POSITION OVERLAYS ──
+function positionOverlays(){
+  var tb=document.querySelector('.topbar');
+  if(!tb)return;
+  var tbH=tb.offsetHeight;
+  var banner=document.getElementById('statusBanner');
+  var ab=document.getElementById('alertBox');
+  var cp=document.getElementById('cnPrompt');
+  var sp=document.getElementById('scoresPanel');
+  // Status banner just below topbar
+  if(banner)banner.style.top=(tbH+8)+'px';
+  // CN prompt: same position as banner (replaces it visually during exam)
+  if(cp)cp.style.top=(tbH+8)+'px';
+  // Scores panel: top right, same level as banner
+  if(sp)sp.style.top=(tbH+8)+'px';
+  // Alert: below banner (banner ~50px tall)
+  if(ab)ab.style.top=(tbH+8+56)+'px';
+}
+positionOverlays();
+window.addEventListener('resize',positionOverlays);
+setTimeout(positionOverlays,100);
+setTimeout(positionOverlays,500);
+setTimeout(positionOverlays,1000);
+
+// ── AUDIO / VOICE ──
+function initVoice(){
+  if(!window.speechSynthesis)return;
+  var load=function(){
+    voices=window.speechSynthesis.getVoices();
+    // Prefer female voice
+    femaleVoice=voices.find(v=>/samantha|karen|victoria|moira|fiona|female|woman/i.test(v.name))
+      ||voices.find(v=>v.lang==='en-US'&&v.name.includes('f'))
+      ||voices.find(v=>v.lang.startsWith('en'))
+      ||voices[0]||null;
+  };
+  load();
+  window.speechSynthesis.onvoiceschanged=load;
+}
+initVoice();
+
+function speak(text){
+  if(!audioEnabled||!window.speechSynthesis)return;
+  window.speechSynthesis.cancel();
+  var u=new SpeechSynthesisUtterance(text);
+  if(femaleVoice)u.voice=femaleVoice;
+  u.rate=0.72; u.pitch=1.0; u.volume=1;
+  window.speechSynthesis.speak(u);
+}
+
+// speakAndWait — returns a promise that resolves when speech finishes
+function speakAndWait(text){
+  return new Promise(function(resolve){
+    if(!audioEnabled||!window.speechSynthesis){resolve();return;}
+    window.speechSynthesis.cancel();
+    var u=new SpeechSynthesisUtterance(text);
+    if(femaleVoice)u.voice=femaleVoice;
+    u.rate=0.72; u.pitch=1.0; u.volume=1;
+    u.onerror=function(){resolve();};
+    window.speechSynthesis.speak(u);
+    // Fallback if onend never fires (iOS bug)
+    var fallback=setTimeout(resolve, Math.max(3000, text.length*80));
+    u.onend=function(){clearTimeout(fallback);setTimeout(resolve,400);};
+  });
+}
+
+function toggleAudio(){
+  audioEnabled=!audioEnabled;
+  document.getElementById('audioBtn').textContent=audioEnabled?'🔊 Audio':'🔇 Audio';
+  document.getElementById('audioBtn').className=audioEnabled?'mode-btn on':'mode-btn';
+  if(!audioEnabled)window.speechSynthesis&&window.speechSynthesis.cancel();
+}
+
+// ── MEDIAPIPE INIT ──
+function landmarkerOpts(delegate){
+  return {
+    baseOptions:{
+      modelAssetPath:'https://storage.googleapis.com/mediapipe-models/face_landmarker/face_landmarker/float16/1/face_landmarker.task',
+      delegate:delegate
+    },
+    runningMode:'VIDEO',
+    numFaces:1,
+    minFaceDetectionConfidence:0.5,   // default — 0.6 was suppressing real faces in field lighting
+    minFacePresenceConfidence:0.5,
+    minTrackingConfidence:0.5,
+    outputFaceBlendshapes:true,
+    outputFacialTransformationMatrixes:true
+  };
+}
+// Pinned to a mobile-proven stable release (0.10.14). Newer builds have flaked on some phones;
+// this version is widely validated and exports everything we use (FaceLandmarker, FilesetResolver,
+// FACE_LANDMARKS_* connection constants). Upgrade only after on-device retest.
+var MP_VER='0.10.14';
+var MP_CDN='https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@'+MP_VER;
+function isIOS(){
+  return /iPad|iPhone|iPod/.test(navigator.userAgent) ||
+    (navigator.platform==='MacIntel' && navigator.maxTouchPoints>1); // iPadOS reports as Mac
+}
+var visionModule=null;
+async function loadFaceLandmarker(){
+  // Load the MediaPipe tasks-vision ES module via dynamic import() (only .mjs exists, no UMD).
+  try{
+    if(!visionModule){
+      visionModule=await import(MP_CDN+'/vision_bundle.mjs');
+    }
+  }catch(impErr){
+    console.error('[CC] MediaPipe module import failed:',impErr);
+    diagError('module import failed: '+(impErr&&impErr.message));
+    DIAG.model_loaded=false; DIAG.model_delegate='failed';
+    setStatus('AI library failed to load','Check connection and refresh the page');
+    faceLandmarker=null;
+    return false;
+  }
+  if(!visionModule||!visionModule.FilesetResolver||!visionModule.FaceLandmarker){
+    console.error('[CC] tasks-vision module missing FilesetResolver/FaceLandmarker');
+    diagError('vision module missing expected exports');
+    DIAG.model_loaded=false; DIAG.model_delegate='failed';
+    setStatus('AI library failed to load','Check connection and refresh the page');
+    faceLandmarker=null;
+    return false;
+  }
+  try{
+    var fileset=await visionModule.FilesetResolver.forVisionTasks(MP_CDN+'/wasm');
+    // Delegate order: iOS Safari/WebKit GPU (WebGL2) delegate is unreliable — it can create
+    // successfully yet return zero landmarks (google-ai-edge/mediapipe #4499, #6142, #5122).
+    // So on iOS we try CPU FIRST (reliable, fast enough for one face), GPU only as last resort.
+    // On Android/desktop, GPU first for speed, CPU fallback.
+    var delegates = isIOS() ? ['CPU','GPU'] : ['GPU','CPU'];
+    faceLandmarker=null;
+    for(var i=0;i<delegates.length;i++){
+      try{
+        faceLandmarker=await visionModule.FaceLandmarker.createFromOptions(fileset,landmarkerOpts(delegates[i]));
+        DIAG.model_loaded=true; DIAG.model_delegate=delegates[i];
+        console.log('[CC] FaceLandmarker ready ('+delegates[i]+' delegate)');
+        break;
+      }catch(delErr){
+        console.warn('[CC] '+delegates[i]+' delegate failed:',delErr&&delErr.message);
+        diagError(delegates[i]+' delegate failed: '+(delErr&&delErr.message));
+      }
+    }
+    if(!faceLandmarker){
+      DIAG.model_loaded=false; DIAG.model_delegate='failed';
+      setStatus('AI model failed to load','Tap Reset to retry — check connection');
+      return false;
+    }
+    setStatus('AI Model Ready','Position your face in the frame');
+    return true;
+  }catch(e){
+    console.error('[CC] FaceLandmarker load failed:',e);
+    diagError('landmarker create failed: '+(e&&e.message));
+    DIAG.model_loaded=false; DIAG.model_delegate='failed';
+    faceLandmarker=null;
+    setStatus('AI model failed to load','Tap Reset to retry — check connection');
+    return false;
+  }
+}
+
+// ── CAMERA + CANVAS ALIGNMENT ──
+var _ccVideo=null, _ccCanvas=null, _dpr=1;
+
+// Size the mesh canvas backing store to its CSS box × devicePixelRatio (crisp, no stretch).
+function sizeMeshCanvas(){
+  var c=_ccCanvas; if(!c)return;
+  _dpr=window.devicePixelRatio||1;
+  var w=c.clientWidth||window.innerWidth, h=c.clientHeight||window.innerHeight;
+  var bw=Math.max(1,Math.round(w*_dpr)), bh=Math.max(1,Math.round(h*_dpr));
+  if(c.width!==bw||c.height!==bh){c.width=bw;c.height=bh;}
+}
+window.addEventListener('resize',function(){if(cameraActive)sizeMeshCanvas();});
+window.addEventListener('orientationchange',function(){setTimeout(function(){if(cameraActive)sizeMeshCanvas();},300);});
+
+// Map a normalized MediaPipe landmark (relative to the full video frame) onto the canvas,
+// reproducing the video's object-fit:cover crop and mirroring the front camera in math.
+// This is the ONLY reliable cross-device alignment method (no object-fit on canvas).
+function coverMap(p){
+  var v=_ccVideo, c=_ccCanvas;
+  var vw=v.videoWidth||1280, vh=v.videoHeight||720, cw=c.width, ch=c.height;
+  var s=Math.max(cw/vw, ch/vh);
+  var dw=vw*s, dh=vh*s, ox=(cw-dw)/2, oy=(ch-dh)/2;
+  var x=p.x*dw+ox, y=p.y*dh+oy;
+  return {x: cw-x, y: y};   // mirror x to match CSS-mirrored #webcam (front camera)
+}
+
+function camMsg(err){
+  var n=err&&err.name;
+  if(n==='NotAllowedError') return ['Camera permission blocked','Allow camera access in your browser, then reload and tap Begin.'];
+  if(n==='NotFoundError')   return ['No camera found','This device has no usable camera.'];
+  if(n==='NotReadableError')return ['Camera is busy','Another app or tab is using the camera. Close it and reload.'];
+  if(n==='OverconstrainedError') return ['Camera settings unsupported','Retrying with default settings…'];
+  if(n==='SecurityError')   return ['Camera disabled','Camera access is turned off in this browser’s settings.'];
+  return ['Camera error', (n||(err&&err.message)||'Unknown')+' — reload and try again.'];
+}
+function camFail(title,sub){
+  var ss=document.getElementById('startScreen');
+  if(ss){
+    ss.style.display='flex';
+    var st=ss.querySelector('.start-title'), su=ss.querySelector('.start-sub');
+    if(st)st.textContent=title;
+    if(su)su.textContent=sub||'';
+  }
+  console.warn('[CC] camFail:',title,sub);
+}
+
+async function initCamera(){
+  var video=document.getElementById('webcam');
+  var canvas=document.getElementById('meshCanvas');
+  _ccVideo=video; _ccCanvas=canvas;
+
+  // Pre-flight: catch the two silent killers before a confusing failure.
+  if(!window.isSecureContext){
+    return camFail('Open over HTTPS','The camera only works on a secure (https) page or localhost.');
+  }
+  if(!navigator.mediaDevices||!navigator.mediaDevices.getUserMedia){
+    return camFail('Open in Safari or Chrome','This in-app browser can’t access the camera. Tap ⋯ and “Open in Safari/Chrome”.');
+  }
+
+  // Release any prior stream before re-acquiring (prevents NotReadableError on Android re-init).
+  if(stream){ try{stream.getTracks().forEach(function(t){t.stop();});}catch(e){} stream=null; video.srcObject=null; }
+
+  // Make the video visible BEFORE play() — iOS won't paint a hidden/zero-area video.
+  // (startScreen still covers it via z-index until we confirm success, so errors stay readable.)
+  video.style.display='block';
+  canvas.style.display='block';
+  video.muted=true; video.setAttribute('playsinline',''); video.setAttribute('webkit-playsinline','');
+
+  var constraints={
+    video:{facingMode:{ideal:facingMode},width:{ideal:1280},height:{ideal:720},frameRate:{ideal:30}},
+    audio:{echoCancellation:true,noiseSuppression:true,autoGainControl:true}
+  };
+  try{
+    stream=await navigator.mediaDevices.getUserMedia(constraints);
+  }catch(err){
+    if(err&&err.name==='OverconstrainedError'){
+      try{ stream=await navigator.mediaDevices.getUserMedia({video:{facingMode:{ideal:facingMode}},audio:true}); }
+      catch(e2){ var m2=camMsg(e2); return camFail(m2[0],m2[1]); }
+    }else{
+      var m=camMsg(err); return camFail(m[0],m[1]);
+    }
+  }
+
+  video.srcObject=stream;
+  // Wait for metadata so videoWidth/Height are non-zero (the classic 0×0 detection killer).
+  await new Promise(function(res){
+    var done=false, finish=function(){if(!done){done=true;res();}};
+    if(video.readyState>=1 && video.videoWidth>0) return finish();
+    video.addEventListener('loadedmetadata',finish,{once:true});
+    setTimeout(finish,3000); // safety net
+  });
+  try{ await video.play(); }
+  catch(playErr){ console.warn('[CC] video.play() rejected:',playErr&&playErr.message); /* stream still renders */ }
+
+  // Black-frame guard: stream acquired but no pixels.
+  var vtrack=stream.getVideoTracks&&stream.getVideoTracks()[0];
+  if(!vtrack || vtrack.readyState==='ended'){
+    return camFail('Camera didn’t start','The camera stream ended unexpectedly. Reload and try again.');
+  }
+  vtrack.addEventListener&&vtrack.addEventListener('ended',function(){ if(cameraActive) setStatus('Camera disconnected','Reload to restart'); });
+
+  // Success — reveal the live view.
+  document.getElementById('startScreen').style.display='none';
+  document.getElementById('camInfo').style.display='flex';
+  document.getElementById('statusBanner').style.display='block';
+  document.getElementById('scoresPanel').style.display='block';
+  cameraActive=true;
+  sizeMeshCanvas();
+  positionOverlays();
+
+  setStatus('Loading AI Model…','Please wait');
+  await loadFaceLandmarker();
+  startRenderLoop();
+  // Brief warm-up so the first frames flow, then start the exam.
+  await new Promise(function(r){setTimeout(r,1200);});
+  await speakAndWait('Camera ready. Starting triage screening.');
+  startExam();
+}
+
+function switchCamera(){
+  facingMode=facingMode==='user'?'environment':'user';
+  if(cameraActive)initCamera();
+}
+
+// ── GEOMETRY HELPERS ──
+function dist(a,b){return Math.hypot(a.x-b.x,a.y-b.y);}
+function mid(a,b){return{x:(a.x+b.x)/2,y:(a.y+b.y)/2,z:((a.z||0)+(b.z||0))/2};}
+function dot2(a,b){return a.x*b.x+a.y*b.y;}
+function sub(a,b){return{x:a.x-b.x,y:a.y-b.y,z:(a.z||0)-(b.z||0)};}
+function norm2(a){var l=Math.hypot(a.x,a.y);return l?{x:a.x/l,y:a.y/l}:{x:0,y:0};}
+
+function pushBuf(key,val){
+  BUF[key].push(val);
+  if(BUF[key].length>BUF.maxLen)BUF[key].shift();
+}
+
+function stdDev(arr){
+  if(arr.length<2)return 0;
+  var m=arr.reduce((a,b)=>a+b,0)/arr.length;
+  return Math.sqrt(arr.map(x=>(x-m)**2).reduce((a,b)=>a+b,0)/arr.length);
+}
+
+function clamp(x,lo,hi){return Math.max(lo,Math.min(hi,x));}
+
+// ── SPEECH ASSESSMENT ENGINE ──
+// ChatGPT calibrated thresholds:
+// Normal: WPM >= 158, accuracy >= 0.90, composite >= 0.85
+// Mild dysarthria: WPM 117-157, accuracy 0.75-0.89, composite 0.70-0.84
+// Moderate: WPM 87-116, accuracy 0.50-0.74, composite 0.45-0.69
+// Severe: WPM < 87, accuracy < 0.50, composite < 0.45
+var SPEECH_TESTS=[
+  {
+    id:'baseline',
+    display:'"The sky is blue and the grass is green."',
+    phrase:'the sky is blue and the grass is green',
+    words:8,
+    speak:'The sky is blue and the grass is green.',
+    label:'Baseline Speech',
+    desc:'Balanced phonemes — measures WPM and clarity',
+    emoji:'🗣️'
+  },
+  {
+    id:'articulation',
+    display:'"Peter Piper picked a peck of pickled peppers."',
+    phrase:'peter piper picked a peck of pickled peppers',
+    words:9,
+    speak:'Peter Piper picked a peck of pickled peppers.',
+    label:'Articulation Stress',
+    desc:'Bilabial + tongue + posterior tongue — detects slurring (CN VII/XII)',
+    emoji:'👅'
+  },
+  {
+    id:'motor',
+    display:'"Pa-ta-ka, pa-ta-ka, pa-ta-ka."',
+    phrase:'pa ta ka pa ta ka pa ta ka',
+    words:9,
+    speak:'Pa-ta-ka. Pa-ta-ka. Pa-ta-ka.',
+    label:'Motor Coordination',
+    desc:'Diadochokinesis — measures syllables per second',
+    emoji:'⚡',
+    isDDK:true,
+    normalSPS:5.0  // normal >= 5 syllables/sec
+  },
+  {
+    id:'natural',
+    display:'"I like piña coladas and dancing in the rain."',
+    phrase:'i like pina coladas and dancing in the rain',
+    words:9,
+    speak:'I like piña coladas and dancing in the rain.',
+    label:'Natural Speech',
+    desc:'Relaxed speech — reveals subtle dysarthria',
+    emoji:'🎵'
+  }
+];
+var SPEECH_PHRASE='the sky is blue and the grass is green';
+var SPEECH_WORDS=8;
+
+function wordErrorRate(expected, got){
+  var exp=expected.toLowerCase().replace(/[^a-z\s]/g,' ').replace(/\s+/g,' ').trim().split(' ');
+  var hyp=got.toLowerCase().replace(/[^a-z\s]/g,' ').replace(/\s+/g,' ').trim().split(' ');
+  // Dynamic programming WER
+  var m=exp.length, n=hyp.length;
+  var dp=[];
+  for(var i=0;i<=m;i++){dp[i]=[];for(var j=0;j<=n;j++)dp[i][j]=0;}
+  for(var i=0;i<=m;i++)dp[i][0]=i;
+  for(var j=0;j<=n;j++)dp[0][j]=j;
+  for(var i=1;i<=m;i++){
+    for(var j=1;j<=n;j++){
+      if(exp[i-1]===hyp[j-1])dp[i][j]=dp[i-1][j-1];
+      else dp[i][j]=1+Math.min(dp[i-1][j],dp[i][j-1],dp[i-1][j-1]);
+    }
+  }
+  return Math.min(1, dp[m][n]/m);
+}
+
+function scoreDDK(durationSec, transcript){
+  // Count syllables per second for pa-ta-ka
+  // Each pa-ta-ka = 3 syllables, 3 repetitions = 9 syllables
+  var sps=9/Math.max(durationSec,0.5);
+  var rateScore=clamp((sps-2)/(5-2),0,1); // normal >=5 sps
+  // Also check accuracy of pa-ta-ka recognition
+  var expected='pa ta ka pa ta ka pa ta ka';
+  var wer=wordErrorRate(expected,transcript);
+  var acc=Math.max(0,1-wer);
+  var score=Math.round(clamp(0.60*rateScore+0.40*acc,0,1)*100)/100;
+  var label,sClass;
+  if(score>=0.75){label='Normal Coordination';sClass='good';}
+  else if(score>=0.50){label='Mildly Reduced';sClass='warn';}
+  else{label='Reduced Coordination';sClass='alert';}
+  return{score,sps:Math.round(sps*10)/10,accuracy:Math.round(acc*100),label,sClass,rateScore:Math.round(rateScore*100)};
+}
+
+function scoreSpeech(wpm, accuracy, confidence){
+  var rateScore=clamp((wpm-87)/(158-87),0,1);
+  var score;
+  if(confidence!=null){
+    score=0.60*accuracy+0.30*rateScore+0.10*confidence;
+  }else{
+    score=0.70*accuracy+0.30*rateScore;
+  }
+  score=Math.round(clamp(score,0,1)*100)/100;
+  var label,sClass;
+  if(score>=0.85){label='Normal Speech';sClass='good';}
+  else if(score>=0.70){label='Possible Mild Dysarthria';sClass='warn';}
+  else if(score>=0.45){label='Possible Moderate Dysarthria';sClass='alert';}
+  else{label='Possible Severe Impairment';sClass='alert';}
+  return{score,wpm:Math.round(wpm),accuracy:Math.round(accuracy*100),rateScore:Math.round(rateScore*100),label,sClass};
+}
+
+function runSpeechTest(){
+  return new Promise(function(resolve){
+    var SR=window.SpeechRecognition||window.webkitSpeechRecognition;
+    if(!SR){
+      resolve({error:'SpeechRecognition not supported on this browser/device'});
+      return;
+    }
+    var rec=new SR();
+    rec.lang='en-US';
+    rec.continuous=false;
+    rec.interimResults=true;
+    rec.maxAlternatives=3;
+
+    var startMs=performance.now(); // default to now — overwritten by onstart
+    var finalText='';
+    var confidences=[];
+    var done=false;
+    var timeout=setTimeout(function(){
+      if(!done){done=true;rec.stop();resolve({error:'timeout'});}
+    },15000);
+
+    rec.onstart=function(){startMs=performance.now();};
+
+    rec.onresult=function(e){
+      finalText='';confidences=[];
+      for(var i=0;i<e.results.length;i++){
+        var r=e.results[i];
+        if(r.isFinal){
+          finalText+=r[0].transcript+' ';
+          if(typeof r[0].confidence==='number'&&r[0].confidence>0)
+            confidences.push(r[0].confidence);
+        }
+      }
+    };
+
+    rec.onerror=function(e){
+      if(!done){done=true;clearTimeout(timeout);resolve({error:e.error});}
+    };
+
+    rec.onend=function(){
+      if(done)return;
+      done=true;clearTimeout(timeout);
+      if(!finalText.trim()){resolve({error:'no speech detected'});return;}
+      var seconds=(performance.now()-startMs)/1000;
+      var wpm=SPEECH_WORDS/(seconds/60);
+      var transcript=finalText.toLowerCase().replace(/[^a-z\s]/g,' ').replace(/\s+/g,' ').trim();
+      var wer=wordErrorRate(SPEECH_PHRASE,transcript);
+      var accuracy=Math.max(0,1-wer);
+      var conf=confidences.length?confidences.reduce(function(a,b){return a+b;},0)/confidences.length:null;
+      var result=scoreSpeech(wpm,accuracy,conf);
+      result.transcript=transcript;
+      result.duration=Math.round(seconds*10)/10;
+      result.raw={wpm:result.wpm,accuracy:result.accuracy,confidence:conf?Math.round(conf*100):null};
+      resolve(result);
+    };
+
+    try{rec.start();}catch(e){if(!done){done=true;clearTimeout(timeout);resolve({error:'mic error: '+e.message});}}
+  });
+}
+
+
+// ── ATTENTION DOT ANIMATION ──
+var attDotEl=null;
+function createAttDot(){
+  if(attDotEl)return;
+  attDotEl=document.createElement('div');
+  attDotEl.style.cssText='position:fixed;width:32px;height:32px;border-radius:50%;background:radial-gradient(circle,#fff 30%,rgba(30,136,229,0.9) 100%);border:3px solid rgba(255,255,255,0.9);box-shadow:0 0 20px rgba(30,136,229,1),0 0 40px rgba(30,136,229,0.5);z-index:9999;pointer-events:none;display:none;transform:translate(-50%,-50%);';
+  document.body.appendChild(attDotEl);
+}
+
+function moveAttDot(xFrac,yFrac){
+  if(!attDotEl)return;
+  var w=window.innerWidth, h=window.innerHeight;
+  attDotEl.style.left=(xFrac*w)+'px';
+  attDotEl.style.top=(yFrac*h)+'px';
+}
+
+// Score the attention tracking results
+function scoreAttention(){
+  var frames=ATT.frames;
+  if(frames.length<10) return null;
+
+  // Tracking error per frame
+  var errors=frames.map(function(f){
+    return Math.hypot(f.gx-f.tx, f.gy-f.ty);
+  });
+  var meanError=errors.reduce(function(a,b){return a+b;},0)/errors.length;
+
+  // accuracyScore — ChatGPT: 0.04 eyeW = 6° = published delirium dispersion threshold
+  var accuracyScore=Math.round(Math.max(0,1-meanError/0.04)*100);
+
+  // timeOnTarget — on target if error < 0.04 eyeW (6°)
+  var onTarget=errors.filter(function(e){return e<0.04;}).length;
+  var timeOnTarget=onTarget/frames.length;
+
+  // offTargetBreaks — runs >500ms off target using 0.04 eyeW threshold
+  var breaks=0, inBreak=false, breakLen=0;
+  errors.forEach(function(e){
+    if(e>=0.04){if(!inBreak){inBreak=true;breakLen=0;}breakLen++;}
+    else{if(inBreak&&breakLen>=15)breaks++;inBreak=false;breakLen=0;}
+  });
+  if(inBreak&&breakLen>=15)breaks++;
+
+  // pursuitLag — cross-correlation lag
+  var lagFrames=0, bestCorr=-Infinity;
+  for(var lag=0;lag<=15;lag++){
+    var corr=0,n=0;
+    for(var i=lag;i<frames.length;i++){
+      corr+=frames[i].gx*frames[i-lag].tx+frames[i].gy*frames[i-lag].ty;
+      n++;
+    }
+    if(n>0&&corr/n>bestCorr){bestCorr=corr/n;lagFrames=lag;}
+  }
+  var pursuitLagMs=Math.round(lagFrames*33);
+
+  // blink rate per minute
+  var durationMin=(frames[frames.length-1].t-frames[0].t)/60000;
+  var blinkRatePerMin=durationMin>0?Math.round(ATT.blinkCount/durationMin):0;
+
+  // Composite inattention flag (ChatGPT: 2+ criteria)
+  var criteria=0;
+  if(accuracyScore<60)criteria++;
+  if(timeOnTarget<0.60)criteria++;
+  if(breaks>=4)criteria++;
+  if(pursuitLagMs>=300)criteria++;
+  if(blinkRatePerMin<5||blinkRatePerMin>30)criteria++;
+  var inattentionFlag=criteria>=2;
+
+  return{
+    accuracyScore,
+    timeOnTarget:Math.round(timeOnTarget*100),
+    offTargetBreaks:breaks,
+    pursuitLagMs,
+    blinkRatePerMin,
+    criteria,
+    inattentionFlag
+  };
+}
+
+// Run the 10-second moving dot attention test
+async function runAttentionTest(){
+  createAttDot();
+  ATT.active=true;
+  ATT.frames=[];
+  ATT.blinkCount=0;
+  ATT.blinkInProgress=false;
+  ATT.result=null;
+  // Position at center first before showing
+  moveAttDot(0.5,0.5);
+  attDotEl.style.display='block';
+
+  // Dot path: figure-8 style across screen over 10s
+  var startT=performance.now();
+  return new Promise(function(resolve){
+    function moveDot(){
+      var elapsed=performance.now()-startT;
+      if(elapsed>=ATT.dotDur){
+        ATT.active=false;
+        attDotEl.style.display='none';
+        ATT.result=scoreAttention();
+        resolve(ATT.result);
+        return;
+      }
+      // Lissajous figure path
+      var t=elapsed/ATT.dotDur*Math.PI*4;
+      var tbH=document.querySelector('.topbar').offsetHeight;
+      var topFrac=(tbH+60)/window.innerHeight;
+      var xFrac=0.5+0.35*Math.sin(t);
+      var yFrac=topFrac+(1-topFrac-0.15)*( 0.3+0.4*Math.sin(t*2+Math.PI/4) );
+      ATT.dotX=xFrac; ATT.dotY=yFrac;
+      moveAttDot(xFrac,yFrac);
+      requestAnimationFrame(moveDot);
+    }
+    moveDot();
+  });
+}
+
+// ── LANDMARK EXTRACTION ──
+function extractFeatures(l){
+  // Iris centers (478-point model with iris)
+  var hasIris=l.length>468;
+  // Iris: l[468]=right iris center, l[473]=left iris center (MediaPipe convention)
+  var irisR=hasIris?l[468]:{x:l[33].x*0.5+l[133].x*0.5,y:l[33].y*0.5+l[133].y*0.5,z:0};
+  var irisL=hasIris?l[473]:{x:l[263].x*0.5+l[362].x*0.5,y:l[263].y*0.5+l[362].y*0.5,z:0};
+
+  // Eye geometry — MediaPipe: l[33]/l[133]=RIGHT eye, l[263]/l[362]=LEFT eye
+  var eyeRc=mid(l[33],l[133]);   // RIGHT eye center
+  var eyeLc=mid(l[263],l[362]);  // LEFT eye center
+  var eyeRw=dist(l[33],l[133]);  // RIGHT eye width
+  var eyeLw=dist(l[263],l[362]); // LEFT eye width
+  var IOD=dist(l[33],l[263]);    // interocular distance
+
+  // Normalized iris position — R=right, L=left
+  var Rx=eyeRw>0?(irisR.x-eyeRc.x)/eyeRw:0;
+  var Ry=eyeRw>0?(irisR.y-eyeRc.y)/eyeRw:0;
+  var Lx=eyeLw>0?(irisL.x-eyeLc.x)/eyeLw:0;
+  var Ly=eyeLw>0?(irisL.y-eyeLc.y)/eyeLw:0;
+
+  // Mouth
+  var mTop=l[13], mBot=l[14], mL=l[61], mR=l[291];
+  var mouthOpen=dist(mTop,mBot)/Math.max(dist(mL,mR),0.001);
+  var mouthSpread=dist(mL,mR)/Math.max(IOD,0.001);
+
+  // Smile asymmetry (CN VII)
+  var liftL=(mTop.y-mL.y)/Math.max(IOD,0.001);
+  var liftR=(mTop.y-mR.y)/Math.max(IOD,0.001);
+  var smileAsym=Math.abs(liftL-liftR);
+
+  // CN VII resting asymmetry — mouth corners (61,291) vs brows (70,300), normalized to IOD (33↔263)
+  var leftDrop=(l[61].y-l[70].y);    // mouth corner relative to brow, one side
+  var rightDrop=(l[291].y-l[300].y); // mouth corner relative to brow, other side
+  var cn7asym=Math.abs(leftDrop-rightDrop)/Math.max(IOD,0.001);
+
+  // Jaw width proxy (CN V)
+  var jawW=dist(l[234],l[454]);
+
+  // Head pose from landmarks (simplified)
+  var noseTip=l[4];
+  var headYaw=noseTip.x-0.5; // deviation from center
+
+  // EAR blink detection (ChatGPT indices)
+  // Right: [33,159,158,133,153,145], Left: [362,386,385,263,374,380]
+  var earR=(dist(l[159],l[145])+dist(l[158],l[153]))/(2*dist(l[33],l[133]));
+  var earL=(dist(l[386],l[374])+dist(l[385],l[380]))/(2*dist(l[263],l[362]));
+  var EAR=(earR+earL)/2;
+
+  // Normalized gaze proxy per eye (ChatGPT formula, corrected canthus indices)
+  // Right eye: outer=l[33], inner=l[133]
+  var hR=eyeRw>0?((irisR.x-l[33].x)*(l[133].x-l[33].x)+(irisR.y-l[33].y)*(l[133].y-l[33].y))/(eyeRw*eyeRw):0;
+  // Left eye: outer=l[263], inner=l[362]
+  var hL=eyeLw>0?((irisL.x-l[263].x)*(l[362].x-l[263].x)+(irisL.y-l[263].y)*(l[362].y-l[263].y))/(eyeLw*eyeLw):0;
+  var lidTopR=mid(l[159],l[158]), lidBotR=mid(l[153],l[145]);
+  var lidTopL=mid(l[386],l[385]), lidBotL=mid(l[374],l[380]);
+  var eyeHR=dist(lidTopR,lidBotR);
+  var eyeHL=dist(lidTopL,lidBotL);
+  var vR=eyeHR>0?((irisR.y-lidTopR.y))/(eyeHR):0;
+  var vL=eyeHL>0?((irisL.y-lidTopL.y))/(eyeHL):0;
+  // Head-yaw compensation — subtract head rotation from gaze signal
+  var gazeH=(hR+hL)/2 - headYaw*0.4;
+  var gazeV=(vR+vL)/2;
+
+  return{irisL,irisR,Lx,Ly,Rx,Ry,IOD,mouthOpen,mouthSpread,
+         liftL,liftR,smileAsym,cn7asym,jawW,headYaw,mTop,mBot,mL,mR,
+         EAR,gazeH,gazeV};
+}
+
+// ── BASELINE CALIBRATION ──
+function captureBaseline(f){
+  if(BASE.irisX===null){
+    BASE.irisX=(f.Lx+f.Rx)/2;
+    BASE.irisY=(f.Ly+f.Ry)/2;
+    BASE.jawW=f.jawW;
+    BASE.mouthSpread=f.mouthSpread;
+    BASE.headYaw=f.headYaw;
+    BASE.gazeH=f.gazeH;
+    BASE.gazeV=f.gazeV;
+  }else{
+    // Smooth baseline update
+    BASE.irisX=BASE.irisX*0.98+(f.Lx+f.Rx)/2*0.02;
+    BASE.irisY=BASE.irisY*0.98+(f.Ly+f.Ry)/2*0.02;
+  }
+}
+
+// ── CN SCORING ENGINE ──
+// Calibrated thresholds: ChatGPT 145 deg/eyeWidth unit
+// CN II:  drift < 0.04 eyeW = 6° (fixation)
+// CN III: upgaze >= 0.16 eyeW = 23° normal, < 0.12 = reduced
+// CN IV:  downgaze >= 0.20 eyeW = 29° normal, < 0.15 = reduced
+// CN VI:  lateral >= 0.20 eyeW = 29° normal, < 0.15 = reduced, < 0.10 = marked
+// ChatGPT: use Lx/Ly (monocular) for CN motor tests
+function scoreCN(id,features){
+  var f=features;
+  var sc=0;
+
+  switch(id){
+    case'II':
+      // Fixation stability — stdDev of monocular Rx over 30 frames
+      // Threshold: 0.04 eyeW = 6 degrees (ChatGPT calibrated)
+      var xs=BUF.iris.map(function(p){return p.Rx;}).slice(-30);
+      var ys=BUF.iris.map(function(p){return p.Ry;}).slice(-30);
+      if(xs.length>10){
+        var drift=stdDev(xs)+stdDev(ys);
+        sc=clamp(1-drift/0.04,0,1);
+      }
+      break;
+
+    case'III':
+      // Upgaze — monocular vertical Ry and Ly, max over last 15 frames
+      // Normal: >= 0.16 eyeW (23°), reduced < 0.12 (17°)
+      if(BUF.iris.length>5){
+        var upR=BUF.iris.slice(-15).map(function(p){return BASE.irisY-p.Ry;});
+        var upL=BUF.iris.slice(-15).map(function(p){return BASE.irisY-p.Ly;});
+        var bestUpR=Math.max.apply(null,upR.concat([0]));
+        var bestUpL=Math.max.apply(null,upL.concat([0]));
+        var bestUp=Math.min(bestUpR,bestUpL); // both eyes must move
+        sc=clamp(bestUp/0.16,0,1);
+      }
+      break;
+
+    case'IV':
+      // Downgaze — monocular vertical, depression from baseline
+      // Normal: >= 0.20 eyeW (29°), reduced < 0.15 (22°)
+      if(BUF.iris.length>5){
+        var dnR=BUF.iris.slice(-15).map(function(p){return p.Ry-BASE.irisY;});
+        var dnL=BUF.iris.slice(-15).map(function(p){return p.Ly-BASE.irisY;});
+        var bestDnR=Math.max.apply(null,dnR.concat([0]));
+        var bestDnL=Math.max.apply(null,dnL.concat([0]));
+        var bestDown=Math.min(bestDnR,bestDnL);
+        sc=clamp(bestDown/0.20,0,1);
+      }
+      break;
+
+    case'V':
+      // Jaw clench — jaw width increases from baseline
+      if(BASE.jawW){
+        var delta=f.jawW-BASE.jawW;
+        sc=clamp(delta/0.015,0,1);
+      }
+      break;
+
+    case'VI':
+      // Lateral gaze — monocular outward excursion, compare both eyes
+      // Normal: >= 0.20 eyeW (29°), reduced < 0.15, marked < 0.10
+      // Score on the WEAKER eye to detect asymmetry
+      if(BUF.iris.length>5){
+        var buf=BUF.iris.slice(-40);
+        var maxRx=buf.reduce(function(m,p){return Math.max(m,p.Rx-BASE.irisX);},0);
+        var maxLx=buf.reduce(function(m,p){return Math.max(m,BASE.irisX-p.Lx);},0);
+        var weakEye=Math.min(maxRx,maxLx);
+        sc=clamp(weakEye/0.20,0,1);
+      }
+      break;
+
+    case'VII':
+      // Smile symmetry — spread gain + low asymmetry
+      // ChatGPT: facial metric not gaze
+      var spreadGain=f.mouthSpread-(BASE.mouthSpread||f.mouthSpread);
+      var symScore=1-clamp(f.smileAsym/0.05,0,1);
+      sc=clamp(spreadGain/0.06,0,1)*0.5+symScore*0.5;
+      break;
+
+    case'IX':
+      // Mouth open ratio >= 0.35
+      sc=clamp(f.mouthOpen/0.35,0,1);
+      break;
+
+    case'X':
+      // Swallow proxy — mouth closed
+      var mClosed=f.mouthOpen<0.12?1:0;
+      sc=mClosed*0.7+(f.mouthOpen<0.15?0.3:0);
+      break;
+
+    case'XI':
+      sc=0.75; // proxy pass — shoulders not visible
+      break;
+
+    case'XII':
+      // Tongue — significant mouth opening
+      sc=clamp(f.mouthOpen/0.4,0,1)*0.8;
+      break;
+  }
+
+  return Math.round(sc*100)/100;
+}
+
+function classifyScore(s){
+  if(s>=0.78)return['Normal','good'];
+  if(s>=0.55)return['Borderline','warn'];
+  return['Reduced','bad'];
+}
+// Convert score to approximate degrees (145 deg/eyeWidth unit)
+function scoreToDeg(s,testId){
+  var ranges={'II':6,'III':23,'IV':29,'VI':29,'VII':null,'IX':null,'X':null,'XI':null,'XII':null};
+  var max=ranges[testId];
+  if(!max)return null;
+  return Math.round(s*max)+'°';
+}
+
+// ── ONE-EURO LANDMARK SMOOTHING (Casiez et al., CHI 2012) ──
+// Removes landmark jitter at rest without adding lag on fast movement. Applied to every
+// landmark x/y (normalized) right after detection, so scoring AND the drawn mesh are stable.
+// Spec 17.3 params: minCutoff=1.0, beta=0.1, dCutoff=1.0. Time in SECONDS (critical).
+function _LowPass(){ this.s=null; this.init=false; }
+_LowPass.prototype.filter=function(v,a){ this.s=this.init?(a*v+(1-a)*this.s):(v); this.init=true; return this.s; };
+function OneEuro(minCut,beta,dCut){ this.mc=minCut;this.b=beta;this.dc=dCut;this.x=new _LowPass();this.dx=new _LowPass();this.lt=null;this.lr=null; }
+OneEuro.prototype._alpha=function(c,dt){ var tau=1/(2*Math.PI*c); return 1/(1+tau/dt); };
+OneEuro.prototype.filter=function(v,t){
+  var dt=(this.lt!=null&&t>this.lt)?(t-this.lt):(1/30); this.lt=t;       // real dt; guard dup/backward
+  var dv=(this.lr!=null)?(v-this.lr)/dt:0; this.lr=v;
+  var edv=this.dx.filter(dv,this._alpha(this.dc,dt));
+  var cut=this.mc + this.b*Math.abs(edv);
+  return this.x.filter(v,this._alpha(cut,dt));
+};
+var _euroX=[], _euroY=[];
+function smoothLandmarks(lm,tSec){
+  for(var i=0;i<lm.length;i++){
+    if(!_euroX[i]){ _euroX[i]=new OneEuro(1.0,0.1,1.0); _euroY[i]=new OneEuro(1.0,0.1,1.0); }
+    lm[i].x=_euroX[i].filter(lm[i].x,tSec);
+    lm[i].y=_euroY[i].filter(lm[i].y,tSec);
+  }
+}
+function resetEuro(){ _euroX=[]; _euroY=[]; }
+
+// ── RENDER LOOP ──
+// Pattern (multi-source consensus): VIDEO mode, detect once per NEW video frame
+// (currentTime dedup) with a strictly-increasing timestamp, but DRAW every rAF so the
+// overlay never flickers. Detection is gated on videoWidth>0 (frames actually flowing).
+var lastVideoTime=-1;
+var lastDetectTs=0;              // enforce strictly-increasing detect timestamp
+var lastResults=null;           // most recent detection result (drawn every frame)
+var CC_DEBUG=true;
+var dbgFeatOK=0, dbgFeatNull=0;
+function startRenderLoop(){
+  var video=_ccVideo||document.getElementById('webcam');
+  var canvas=_ccCanvas||document.getElementById('meshCanvas');
+  var ctx=canvas.getContext('2d');
+
+  function frame(){
+    animFrame=requestAnimationFrame(frame);
+    if(!cameraActive)return;
+
+    sizeMeshCanvas();
+    var w=canvas.width,h=canvas.height;
+    ctx.clearRect(0,0,w,h);
+
+    // FPS bookkeeping
+    frameCount++;
+    if(TRIAGE.active)TRIAGE.renderFrames++;
+    var now=Date.now();
+    if(now-lastFpsTime>=1000){
+      fps=frameCount;frameCount=0;lastFpsTime=now;
+      if(TRIAGE.active){
+        if(DIAG.min_fps===null||fps<DIAG.min_fps)DIAG.min_fps=fps;
+        if(DIAG.max_fps===null||fps>DIAG.max_fps)DIAG.max_fps=fps;
+      }
+      if(CC_DEBUG)console.log('[CC] iris='+BUF.iris.length+' delegate='+DIAG.model_delegate+' vw='+video.videoWidth+' capturing='+TRIAGE.capturing+' featOK/s='+dbgFeatOK+' featNull/s='+dbgFeatNull+' fps='+fps);
+      dbgFeatOK=0;dbgFeatNull=0;
+    }
+
+    // Detect only on a NEW frame with real pixels.
+    var ready=faceLandmarker&&video.readyState>=2&&video.videoWidth>0;
+    if(ready && video.currentTime!==lastVideoTime){
+      lastVideoTime=video.currentTime;
+      var ts=performance.now(); if(ts<=lastDetectTs)ts=lastDetectTs+1; lastDetectTs=ts;
+      try{
+        var results=faceLandmarker.detectForVideo(video,ts);
+        lastResults=results;
+        if(results.faceLandmarks&&results.faceLandmarks.length>0){
+          var lm=results.faceLandmarks[0];
+          smoothLandmarks(lm, ts/1000);          // OneEuro de-jitter (in place) before scoring + draw
+          var features=extractFeatures(lm);
+          dbgFeatOK++;
+          DIAG.face_detected=true; DIAG.detectFrames++;
+          DIAG.irisSum += (lm.length>=478?10:(lm.length>468?(lm.length-468):0));
+          captureBaseline(features);
+
+          if(results.faceBlendshapes&&results.faceBlendshapes.length>0){
+            BLEND={};
+            var cats=results.faceBlendshapes[0].categories||[];
+            for(var bi=0;bi<cats.length;bi++){BLEND[cats[bi].categoryName]=cats[bi].score;}
+          }
+          if(results.facialTransformationMatrixes&&results.facialTransformationMatrixes.length>0){
+            POSE=matrixToEuler(results.facialTransformationMatrixes[0].data);
+          }
+
+          pushBuf('iris',{Lx:features.Lx,Ly:features.Ly,Rx:features.Rx,Ry:features.Ry});
+          pushBuf('mouth',features.mouthOpen);
+          pushBuf('smile',features.smileAsym);
+          pushBuf('jaw',features.jawW);
+
+          updateScoresPanel(features);
+
+          if(TRIAGE.capturing){
+            TRIAGE.frames.push({
+              EAR:features.EAR, smileAsym:features.smileAsym, cn7asym:features.cn7asym,
+              mouthOpen:features.mouthOpen, tongueOut:(BLEND.tongueOut||0), headYaw:features.headYaw,
+              yawDeg:POSE.yaw, pitchDeg:POSE.pitch, rollDeg:POSE.roll, t:performance.now()
+            });
+          }
+          if(ATT.active&&features.gazeH!==undefined){
+            var earThresh=0.22;
+            if(features.EAR<earThresh&&!ATT.blinkInProgress){ATT.blinkInProgress=true;}
+            else if(features.EAR>=earThresh&&ATT.blinkInProgress){ATT.blinkCount++;ATT.blinkInProgress=false;}
+            var sg=smoothGaze(features.gazeH,features.gazeV);
+            ATT.frames.push({
+              gx:sg.h-(BASE.gazeH||0), gy:sg.v-(BASE.gazeV||0),
+              tx:(ATT.dotX-0.5)*0.6, ty:(ATT.dotY-0.5)*0.3,
+              blink:ATT.blinkInProgress, t:performance.now()
+            });
+          }
+        }else{
+          dbgFeatNull++;
+        }
+      }catch(e){
+        dbgFeatNull++; lastResults=null;
+        if(CC_DEBUG)console.warn('[CC] detect threw:',e&&e.message);
+        if(TRIAGE.active)diagError('detect: '+(e&&e.message));
+      }
+    }
+
+    // DRAW every rAF (no flicker): mesh if we have a face, else the searching guide.
+    if(lastResults&&lastResults.faceLandmarks&&lastResults.faceLandmarks.length>0){
+      drawRealMesh(ctx,lastResults.faceLandmarks[0]);
+    }else{
+      drawFallbackMesh(ctx,w,h);
+    }
+
+    // Live on-screen diagnostic (so a phone test is self-explaining, no console needed).
+    var lock=!!(lastResults&&lastResults.faceLandmarks&&lastResults.faceLandmarks.length>0);
+    var ci=document.getElementById('camInfoText');
+    if(ci)ci.textContent=(DIAG.model_delegate||'load')+' · '+(video.videoWidth||0)+'×'+(video.videoHeight||0)+' · '+fps+'fps · '+(lock?'FACE ✓':'searching…');
+  }
+  frame();
+}
+
+// ── DRAW REAL FACE MESH ──
+// Every point/line is mapped through coverMap() so it tracks the real face exactly over the
+// cover-cropped, mirrored video. Drawn manually (no DrawingUtils dependency) using the
+// FACE_LANDMARKS_* connection constants — robust across tasks-vision versions.
+function drawConn(ctx,lm,conns,color,lw){
+  if(!conns)return;
+  ctx.strokeStyle=color; ctx.lineWidth=lw; ctx.lineJoin='round'; ctx.beginPath();
+  for(var i=0;i<conns.length;i++){
+    var c=conns[i];
+    var ai=(c&&c.start!==undefined)?c.start:c[0];
+    var bi=(c&&c.end!==undefined)?c.end:c[1];
+    var a=lm[ai], b=lm[bi];
+    if(!a||!b)continue;
+    var pa=coverMap(a), pb=coverMap(b);
+    ctx.moveTo(pa.x,pa.y); ctx.lineTo(pb.x,pb.y);
+  }
+  ctx.stroke();
+}
+function drawRealMesh(ctx,lm){
+  var FL=visionModule&&visionModule.FaceLandmarker;
+  var ls=_dpr||1;
+  // Fine point cloud — cheap, gives the "AI scan" feel and confirms tracking density.
+  ctx.fillStyle='rgba(30,136,229,0.5)';
+  for(var i=0;i<Math.min(lm.length,468);i++){
+    var p=coverMap(lm[i]);
+    ctx.beginPath();ctx.arc(p.x,p.y,1.1*ls,0,Math.PI*2);ctx.fill();
+  }
+  // Feature contours that hug the face (fast — far fewer lines than full tessellation).
+  if(FL&&FL.FACE_LANDMARKS_FACE_OVAL){
+    drawConn(ctx,lm,FL.FACE_LANDMARKS_FACE_OVAL,'rgba(144,202,249,0.85)',2*ls);
+    drawConn(ctx,lm,FL.FACE_LANDMARKS_LEFT_EYE,'rgba(30,136,229,0.9)',1.4*ls);
+    drawConn(ctx,lm,FL.FACE_LANDMARKS_RIGHT_EYE,'rgba(30,136,229,0.9)',1.4*ls);
+    drawConn(ctx,lm,FL.FACE_LANDMARKS_LEFT_EYEBROW,'rgba(144,202,249,0.7)',1.2*ls);
+    drawConn(ctx,lm,FL.FACE_LANDMARKS_RIGHT_EYEBROW,'rgba(144,202,249,0.7)',1.2*ls);
+    drawConn(ctx,lm,FL.FACE_LANDMARKS_LIPS,'rgba(30,136,229,0.9)',1.5*ls);
+    drawConn(ctx,lm,FL.FACE_LANDMARKS_LEFT_IRIS,'rgba(212,168,83,0.95)',2*ls);
+    drawConn(ctx,lm,FL.FACE_LANDMARKS_RIGHT_IRIS,'rgba(212,168,83,0.95)',2*ls);
+  }
+  // Iris centroids as solid gold dots.
+  if(lm.length>468){
+    [lm[468],lm[473]].forEach(function(q){
+      var p=coverMap(q);
+      ctx.beginPath();ctx.arc(p.x,p.y,3*ls,0,Math.PI*2);ctx.fillStyle='#D4A853';ctx.fill();
+    });
+  }
+}
+
+// ── ALIGNMENT GUIDE (shown while searching for a face — spec 15.1 AUTO-ALIGN) ──
+// A clean AR viewfinder: pulsing oval + corner brackets + sweeping scan line. No cartoon face.
+var fallbackFrame=0;
+function drawFallbackMesh(ctx,w,h){
+  fallbackFrame++;
+  var ls=_dpr||1;
+  var cx=w/2, cy=h*0.46;
+  var rx=Math.min(w*0.30,h*0.26), ry=rx*1.28;   // upright face-shaped oval
+  var pulse=0.5+0.5*Math.sin(fallbackFrame*0.05);
+
+  // Pulsing dashed oval guide
+  ctx.save();
+  ctx.setLineDash([14*ls,12*ls]);
+  ctx.lineDashOffset=-fallbackFrame*0.7;
+  ctx.strokeStyle='rgba(144,202,249,'+(0.40+0.30*pulse)+')';
+  ctx.lineWidth=3*ls;
+  ctx.beginPath();ctx.ellipse(cx,cy,rx,ry,0,0,Math.PI*2);ctx.stroke();
+  ctx.restore();
+
+  // Corner brackets framing the capture region
+  var bx=rx*1.18, by=ry*1.04, L=Math.min(w,h)*0.05;
+  ctx.strokeStyle='rgba(30,136,229,0.92)';ctx.lineWidth=4*ls;ctx.lineCap='round';
+  [[cx-bx,cy-by,1,1],[cx+bx,cy-by,-1,1],[cx-bx,cy+by,1,-1],[cx+bx,cy+by,-1,-1]].forEach(function(c){
+    ctx.beginPath();
+    ctx.moveTo(c[0]+c[2]*L,c[1]);ctx.lineTo(c[0],c[1]);ctx.lineTo(c[0],c[1]+c[3]*L);
+    ctx.stroke();
+  });
+
+  // Scan line sweeping inside the oval
+  var sw=22*ls;
+  var scanY=cy-ry+((fallbackFrame*4*ls)%(ry*2));
+  var grad=ctx.createLinearGradient(0,scanY-sw,0,scanY+sw);
+  grad.addColorStop(0,'rgba(30,136,229,0)');
+  grad.addColorStop(0.5,'rgba(30,136,229,0.55)');
+  grad.addColorStop(1,'rgba(30,136,229,0)');
+  ctx.save();
+  ctx.beginPath();ctx.ellipse(cx,cy,rx,ry,0,0,Math.PI*2);ctx.clip();
+  ctx.fillStyle=grad;ctx.fillRect(cx-rx,scanY-sw,rx*2,sw*2);
+  ctx.restore();
+}
+
+// ── LIVE SCORES PANEL ──
+function updateScoresPanel(f){
+  if(!examRunning)return;
+
+  function setScore(id,s){
+    var el=document.getElementById(id);
+    if(!el)return;
+    var c=classifyScore(s);
+    el.textContent=Math.round(s*100)+'%';
+    el.className='score-val '+c[1];
+  }
+
+  // Live TRIAGE metrics from current frame + buffers
+  var eyesS=f?clamp(f.EAR/0.30,0,1):0;                                  // eye openness
+  var trackS=BUF.iris.length>5?clamp(0.55+0.45*Math.min(1,BUF.iris.length/25),0,1):0; // tracking quality
+  var symS=f?clamp(1-f.smileAsym*20,0,1):0;                             // facial symmetry
+  var headBase=(TRIAGE.baseYaw!=null?TRIAGE.baseYaw:(BASE.headYaw||0));
+  var headS=f?clamp(1-Math.abs(f.headYaw-headBase)*8,0,1):0;            // head stability
+  var mouthS=f?clamp(f.mouthOpen/0.40,0,1):0;                           // mouth opening
+
+  setScore('sFixation',eyesS);
+  setScore('sGaze',trackS);
+  setScore('sSmile',symS);
+  setScore('sJaw',headS);
+  setScore('sMouth',mouthS);
+}
+
+
+// ── EXAM SEQUENCE ──
+// ── LEGACY full CN exam (preserved intact; superseded by TRIAGE startExam below) ──
+async function startExamLegacy(){
+  if(examRunning||!cameraActive)return;
+  examRunning=true;
+  DATA.cnR={};DATA.cnScores={};
+  document.getElementById('alertBox').style.display='none';
+  document.getElementById('replayBtn').style.display='none';
+  document.getElementById('statusBanner').className='status-banner';
+  document.getElementById('cnPrompt').style.display='flex';
+
+  // Baseline calibration
+  await speakAndWait('Please look straight ahead while we calibrate.');
+  setStatus('Calibrating baseline...','Hold still and look straight at camera');
+  await w(3000); // additional settle time after speech
+
+  // ── WAIT FOR FACE LOCK before attention test ──
+  setStatus('Detecting face...','Hold still — locking on facial landmarks');
+  var faceWait=0;
+  while(faceWait<100&&BUF.iris.length<20){
+    await w(100);
+    faceWait++;
+  }
+  if(BUF.iris.length>=20){
+    setStatus('Face locked ✓','Ready for attention test');
+    await w(600);
+  }else{
+    setStatus('Continuing without face lock...','Check lighting and face position');
+    await w(600);
+  }
+
+  // ── ATTENTION TRACKING TEST (delirium screening) ──
+  await speakAndWait('Now follow the moving dot with your eyes. Keep your head still.');
+  if(window.speechSynthesis)window.speechSynthesis.cancel();
+  await w(800); // brief pause after instruction
+  setStatus('👁 Attention Test — 10 seconds','Follow the glowing dot with your eyes');
+  document.getElementById('cnEmoji').textContent='👁️';
+  document.getElementById('cnPromptTitle').textContent='Follow the dot with your eyes';
+  document.getElementById('cnPromptSub').textContent='Attention tracking — keep head still';
+  document.getElementById('cnProgressFill').style.width='0%';
+  setTimeout(function(){document.getElementById('cnProgressFill').style.width='100%';},50);
+  // Override progress bar transition for 10s
+  document.getElementById('cnProgressFill').style.transition='width 10s linear';
+  var attResult=await runAttentionTest();
+  document.getElementById('cnProgressFill').style.transition='width 3s linear';
+  // Store result in DATA.cam
+  if(attResult&&attResult.accuracyScore!==undefined){
+    DATA.cam.attScore=attResult.accuracyScore;
+    DATA.cam.timeOnTarget=attResult.timeOnTarget;
+    DATA.cam.breaks=attResult.offTargetBreaks;
+    DATA.cam.pursuitLag=attResult.pursuitLagMs;
+    DATA.cam.blinkRate=attResult.blinkRatePerMin;
+    DATA.cam.inattention=attResult.inattentionFlag;
+    DATA.cam.criteria=attResult.criteria;
+    DATA.cam.s=attResult.inattentionFlag?'FLAG':'CLEAR';
+  }else{
+    // Face not tracked during attention test — mark as incomplete
+    DATA.cam.attScore=0;
+    DATA.cam.timeOnTarget=0;
+    DATA.cam.breaks=0;
+    DATA.cam.pursuitLag=0;
+    DATA.cam.blinkRate=0;
+    DATA.cam.inattention=false;
+    DATA.cam.criteria=0;
+    DATA.cam.s='NO TRACK';
+  }
+
+  // Run each CN test
+  for(var i=0;i<CNT.length;i++){
+    var cn=CNT[i];
+    setStatus(cn.desc,cn.prompt);
+    await speakAndWait(cn.voice);
+    await w(500); // brief pause after instruction
+
+    // Update prompt overlay
+    document.getElementById('cnEmoji').textContent=cn.emoji;
+    document.getElementById('cnPromptTitle').textContent=cn.prompt;
+    document.getElementById('cnPromptSub').textContent=cn.desc;
+    document.getElementById('cnProgressFill').style.width='0%';
+    // Animate progress bar — IIFE captures current iteration
+    (function(){setTimeout(function(){document.getElementById('cnProgressFill').style.width='100%';},50);})();
+
+    // Wait full duration
+    await w(cn.dur);
+    await w(600); // brief pause between tests — senior pacing
+
+    // Score this CN from current buffers
+    var currentFeatures=null;
+    if(BUF.iris.length>0){
+      currentFeatures={
+        Lx:BUF.iris[BUF.iris.length-1].Lx,
+        Ly:BUF.iris[BUF.iris.length-1].Ly,
+        Rx:BUF.iris[BUF.iris.length-1].Rx,
+        Ry:BUF.iris[BUF.iris.length-1].Ry,
+        mouthOpen:BUF.mouth[BUF.mouth.length-1]||0,
+        smileAsym:BUF.smile[BUF.smile.length-1]||0,
+        mouthSpread:BASE.mouthSpread||0.3,
+        jawW:BUF.jaw[BUF.jaw.length-1]||BASE.jawW||0.3
+      };
+    }
+
+    var score=currentFeatures?scoreCN(cn.id,currentFeatures):0.75;
+    DATA.cnR[cn.id]=score>=0.55?'pass':'fail';
+    DATA.cnScores[cn.id]=score;
+  }
+
+  document.getElementById('cnPrompt').style.display='none';
+
+  // ── SPEECH ASSESSMENT BATTERY (4 phrases) ──
+  setStatus('🎤 Speech Tests','4 quick phrases — listen then repeat each one');
+  await speakAndWait('Now we will check your speech. I will read each phrase, then you repeat it.');
+  await w(500);
+
+  var speechResults={};
+  for(var si=0;si<SPEECH_TESTS.length;si++){
+    var st=SPEECH_TESTS[si];
+    document.getElementById('cnPrompt').style.display='flex';
+    document.getElementById('cnEmoji').textContent=st.emoji;
+    document.getElementById('cnPromptTitle').textContent=st.display;
+    document.getElementById('cnPromptSub').textContent=st.label+' — '+st.desc;
+    document.getElementById('cnProgressFill').style.width='0%';
+    setStatus('🎤 '+st.label,'Listen, then repeat the phrase');
+
+    // Say phrase number
+    await speakAndWait('Phrase '+(si+1)+' of 4. '+st.speak);
+    // Explicitly stop TTS before opening mic — prevents iOS audio bleed
+    if(window.speechSynthesis)window.speechSynthesis.cancel();
+    await w(800);
+
+    // Listen
+    setStatus('🎤 Listening...','Say the phrase now');
+    document.getElementById('cnPromptSub').textContent='🎤 Listening — say it now';
+    document.getElementById('cnProgressFill').style.transition='width 12s linear';
+    (function(){setTimeout(function(){document.getElementById('cnProgressFill').style.width='100%';},50);})();
+    var r=await runSpeechTest();
+    document.getElementById('cnProgressFill').style.transition='width 3s linear';
+
+    if(!r.error){
+      if(st.isDDK){
+        speechResults[st.id]=scoreDDK(r.duration,r.transcript);
+        speechResults[st.id].transcript=r.transcript;
+        speechResults[st.id].duration=r.duration;
+      }else{
+        var t=r.transcript||'';
+        var wer2=wordErrorRate(st.phrase,t);
+        var acc2=Math.max(0,1-wer2);
+        var conf2=null;
+        var sr2=scoreSpeech(st.words/(Math.max(r.duration,0.5)/60),acc2,conf2);
+        sr2.transcript=t;
+        sr2.duration=r.duration;
+        speechResults[st.id]=sr2;
+      }
+    }else{
+      speechResults[st.id]={error:r.error,score:0,label:'No response',sClass:'warn',transcript:'',duration:0};
+    }
+    await w(400);
+  }
+
+  document.getElementById('cnPrompt').style.display='none';
+
+  // Compute overall speech score — average of valid results
+  var validScores=Object.values(speechResults).filter(function(r){return !r.error&&r.score>0;});
+  var overallScore=validScores.length>0?
+    Math.round(validScores.reduce(function(a,b){return a+b.score;},0)/validScores.length*100)/100:0;
+  var overallClass=overallScore>=0.85?'good':overallScore>=0.70?'warn':'alert';
+  var overallS=overallClass==='good'?'CLEAR':overallClass==='warn'?'MILD':'FLAG';
+  var overallLabel=overallClass==='good'?'Normal Speech':overallClass==='warn'?'Possible Mild Dysarthria':'Possible Dysarthria';
+
+  DATA.speech={
+    s:overallS,
+    score:Math.round(overallScore*100),
+    label:overallLabel,
+    results:speechResults,
+    wpm:speechResults.baseline&&!speechResults.baseline.error?speechResults.baseline.wpm:0,
+    accuracy:speechResults.baseline&&!speechResults.baseline.error?speechResults.baseline.accuracy:0,
+    sps:speechResults.motor&&!speechResults.motor.error?speechResults.motor.sps:0,
+    transcript:speechResults.baseline&&!speechResults.baseline.error?speechResults.baseline.transcript:''
+  };
+
+  setStatus('Speech Tests Complete',overallLabel);
+  await w(800);
+
+  // GCS — inferred from exam cooperation
+  // Patient completed all 10 CN tasks = eyes open, following commands, verbal
+  setStatus('GCS Assessment','Calculating from exam responses');
+  await speakAndWait('Calculating your alertness score.');
+  // E4 = eyes open spontaneously (camera active)
+  // V5 = follows verbal instructions (completed all prompts)
+  // M6 = follows motor commands (completed all tasks)
+  DATA.gcs={e:'4',v:'5',m:'6',t:'15/15'};
+
+  // CAM — already populated by attention test above, just announce it
+  var camLabel=DATA.cam&&DATA.cam.s==='FLAG'?'Possible inattention detected':'Attention screen complete';
+  setStatus('Delirium Screening',camLabel);
+  await speakAndWait(camLabel+'. Checking frailty next.');
+
+  // Frailty — cannot be measured from face video alone — label as requires clinical
+  setStatus('Frailty Assessment','Requires clinical evaluation');
+  await speakAndWait('Frailty assessment requires clinical evaluation.');
+  DATA.fr={c:'—',t:'—',g:'—',f:'—',s:'N/A',note:'Requires clinical assessment'};
+
+  // Compute capture stability from flow buffer
+  var flowVals=BUF.flow.slice(-60);
+  var captureStab=flowVals.length>10?(function(){
+    var mean=flowVals.reduce(function(a,b){return a+b;},0)/flowVals.length;
+    return Math.max(0,1-mean*3);
+  })():0.85;
+  DATA.examFindings.captureStability=captureStab;
+
+  // Complete
+  examRunning=false;
+  await speakAndWait('Assessment complete. Tap See Results to view your findings.');
+  setStatus('✓ Assessment Complete','Results ready — tap See Results');
+  document.getElementById('statusBanner').className='status-banner complete';
+  // Only show alert if real CN failures detected
+  var failedCNs=Object.keys(DATA.cnR).filter(function(k){return DATA.cnR[k]==='fail';});
+  var alerts=[];
+  if(failedCNs.length>0)alerts.push(failedCNs.length+' CN test(s) flagged');
+  if(DATA.cam&&DATA.cam.inattention)alerts.push('Inattention detected');
+  if(DATA.speech&&(DATA.speech.s==='MILD'||DATA.speech.s==='FLAG'))alerts.push('Speech: '+DATA.speech.label);
+  if(alerts.length>0){
+    document.getElementById('alertTitle').textContent=alerts.join(' · ');
+    document.getElementById('alertBox').style.display='flex';
+  }
+  document.getElementById('replayBtn').style.display='flex';
+  positionOverlays();
+}
+
+function resetExam(){
+  examRunning=false;
+  DATA={cnR:{},cnScores:{},gcs:{e:'—',v:'—',m:'—',t:'—'},cam:{s:'—',r:'—',a:'—',i:'—',d:'—',al:'—'},fr:{c:'—',t:'—',g:'—',f:'—',s:'—'},speech:{s:'—',score:0,label:'—',results:{},wpm:0,accuracy:0,sps:0,transcript:''},examFindings:{}};
+  BUF={iris:[],mouth:[],smile:[],jaw:[],flow:[],headPose:[],maxLen:90};
+  BASE={irisX:null,irisY:null,jawW:null,mouthSpread:null,headYaw:null,gazeH:null,gazeV:null};
+  ATT={active:false,dotX:0.5,dotY:0.5,dotT:0,dotDur:10000,frames:[],blinkCount:0,lastEAR:1,blinkInProgress:false,result:null};
+  TRIAGE={active:false,capturing:false,frames:[],baseEAR:null,baseYaw:null,baseAsym:null,baseMouth:null,result:null,
+          calibStability:0,lightingScore:0,capturedFrames:0,expectedFrames:0,stepsComplete:0,startMs:0,renderFrames:0};
+  GAZE_SMOOTH={h:[],v:[],len:3};
+  resetEuro();
+  if(attDotEl)attDotEl.style.display='none';
+  hideResults();
+  document.getElementById('alertBox').style.display='none';
+  document.getElementById('replayBtn').style.display='none';
+  document.getElementById('cnPrompt').style.display='none';
+  document.getElementById('statusBanner').className='status-banner';
+  ['sFixation','sGaze','sSmile','sJaw','sMouth'].forEach(function(id){
+    var el=document.getElementById(id);
+    if(el){el.textContent='—';el.className='score-val pending';}
+  });
+  if(cameraActive)startExam();
+}
+
+function w(ms){return new Promise(function(r){setTimeout(r,ms);});}
+function setStatus(t,s){
+  var b=document.getElementById('sbTitle'),sb=document.getElementById('sbSub');
+  if(b)b.textContent=t;if(sb)sb.textContent=s;
+}
+
+// ── FAB / SHEET ──
+function toggleFab(){
+  fabOpen=!fabOpen;
+  document.getElementById('fabItems').className='fab-items'+(fabOpen?' open':'');
+  document.getElementById('fab').innerHTML=fabOpen?
+    '<div style="font-size:22px">×</div>':
+    '<div class="fab-icon">📊</div><div>See Results</div>';
+}
+
+var MENU={
+  cn:{icon:'👁️',label:'Cranial Nerves',bg:'rgba(124,58,237,.12)'},
+  gcs:{icon:'🧠',label:'GCS Score',bg:'rgba(37,99,235,.12)'},
+  cam:{icon:'🔴',label:'Delirium Screen',bg:'rgba(220,38,38,.12)'},
+  fr:{icon:'🦴',label:'Frailty & Fall Risk',bg:'rgba(217,119,6,.12)'},
+  speech:{icon:'🗣️',label:'Speech Assessment',bg:'rgba(30,136,229,.12)'},
+  info:{icon:'👤',label:'Patient Info',bg:'rgba(30,136,229,.12)'}
+};
+
+function openSheet(id){
+  activeSheet=id;activeTab='plain';fabOpen=false;
+  document.getElementById('fabItems').className='fab-items';
+  document.getElementById('fab').innerHTML='<div class="fab-icon">📊</div><div>See Results</div>';
+  var m=MENU[id];
+  document.getElementById('shIcon').textContent=m.icon;
+  document.getElementById('shIcon').style.background=m.bg;
+  document.getElementById('shTitle2').textContent=m.label;
+  document.getElementById('tabPlain').className='stab on';
+  document.getElementById('tabClin').className='stab';
+  var s=document.getElementById('sheet');s.style.display='flex';s.className='sheet';
+  document.getElementById('scrim').style.display='block';
+  renderSheet();
+}
+
+function closeSheet(){
+  var s=document.getElementById('sheet');s.className='sheet closing';
+  setTimeout(function(){s.style.display='none';activeSheet=null;},260);
+  document.getElementById('scrim').style.display='none';
+}
+
+function switchTab(t){
+  activeTab=t;
+  document.getElementById('tabPlain').className='stab'+(t==='plain'?' on':'');
+  document.getElementById('tabClin').className='stab'+(t==='clin'?' on':'');
+  renderSheet();
+}
+
+document.getElementById('sheet').addEventListener('touchstart',function(e){window._sY=e.touches[0].clientY;},{passive:true});
+document.getElementById('sheet').addEventListener('touchend',function(e){if(e.changedTouches[0].clientY-window._sY>60)closeSheet();},{passive:true});
+
+// ── RENDER SHEET ──
+function card(type,emoji,title,body){return'<div class="card '+type+'"><div class="card-emoji">'+emoji+'</div><div><div class="card-title">'+title+'</div><div class="card-body">'+body+'</div></div></div>';}
+function ccrow(l,v,cls){return'<div class="cc-row"><span class="cc-rl">'+l+'</span><span class="cc-rv'+(cls?' '+cls:'')+'">'+v+'</span></div>';}
+
+function renderSheet(){
+  if(!activeSheet)return;
+  var h='',d=DATA,g=d.gcs,cam=d.cam,fr=d.fr,cnR=d.cnR,cnS=d.cnScores;
+
+  if(activeTab==='plain'){
+    h='<div class="cards">';
+    if(activeSheet==='cn'){
+      var done=Object.keys(cnR).length;
+      var fails=Object.keys(cnR).filter(function(k){return cnR[k]==='fail';});
+      if(done===0){
+        h+=card('info','👁️','Cranial Nerve Exam','The AI is analyzing your eye movements, smile, jaw, and other facial functions in real time using 478 facial landmarks.');
+      }else if(fails.length===0){
+        h+=card('good','✅','All Nerve Tests Passed','Video-based facial movement analysis demonstrates preserved fixation, conjugate gaze, symmetric smile excursion, and adequate oral opening. No clear lower facial weakness detected.');
+      }else{
+        h+=card('warn','⚠️','Some Tests Need Review',''+fails.length+' test(s) showed reduced movement on video analysis. Findings flagged for clinical review. This screen is not a diagnosis — further assessment may be recommended.');
+      }
+      h+=card('info','🧬','What This Measures','We tested 10 cranial nerves that control vision, eye movement, facial sensation, hearing, swallowing, and tongue movement. These nerves connect your brain to your face and throat.');
+    }else if(activeSheet==='gcs'){
+      if(g.t==='—'){
+        h+=card('info','🧠','Checking Alertness','The Glasgow Coma Scale measures how alert and responsive you are — checking your eyes, voice, and movement.');
+      }else{
+        h+=card('good','✅','Fully Alert','Your alertness score is '+g.t+' — the highest possible. You are fully awake and responding normally.');
+      }
+      h+=card('info','📋','About the GCS','A score of 15 means fully alert. Scores below 15 may indicate the brain needs extra monitoring. Your care team checks this regularly.');
+    }else if(activeSheet==='cam'){
+      if(cam.s==='—'||cam.s==='N/A'||cam.s==='NO TRACK'){
+        h+=card('info','👁️',cam.s==='NO TRACK'?'Face Not Tracked During Test':'Attention Test Pending',cam.s==='NO TRACK'?'The AI could not track your face during the dot test. Make sure your face is well lit and centered. Run the exam again for a valid result.':'The attention tracking test has not run yet. Start the exam to measure gaze tracking, sustained attention, and delirium indicators.');
+      }else if(cam.inattention){
+        h+=card('alert','🚨','Possible Inattention Detected','Eye tracking flagged '+cam.criteria+' attention concerns. Gaze accuracy, time on target, pursuit lag, or blink patterns suggest possible inattention. A bedside delirium assessment is recommended.');
+        h+=card('warn','⚠️','What This Means','This is a video-based digital marker, not a diagnosis. Inattention is a core delirium feature. A clinician should perform a formal CAM assessment.');
+      }else{
+        h+=card('good','✅','Attention Appears Normal','Gaze tracking was stable. Eyes followed the dot accurately with '+cam.timeOnTarget+'% time on target. No significant inattention markers detected.');
+      }
+      if(cam.s!=='—'&&cam.s!=='N/A'&&cam.s!=='NO TRACK'){
+        h+=card('base','📊','Attention Metrics','Tracking accuracy: '+cam.attScore+'% · Time on target: '+cam.timeOnTarget+'% · Off-target breaks: '+cam.breaks+' · Pursuit lag: '+cam.pursuitLag+'ms · Blink rate: '+cam.blinkRate+'/min');
+      }
+      h+=card('info','💡','How You Can Help','Say: "Hi, it\'s [your name]. You\'re at the hospital. You\'re doing well. It\'s [day and time]." Familiar voices and gentle reminders are genuinely therapeutic.');
+    }else if(activeSheet==='fr'){
+      if(fr.s==='N/A'||fr.s==='—'){
+        h+=card('info','🦴','Cannot Measure from Video','Frailty assessment requires physical examination and cannot be measured from face video alone.');
+        h+=card('base','🏥','What to Do','Ask your clinical team for a bedside frailty and fall risk assessment.');
+      }else if(fr.f==='HIGH'){
+        h+=card('alert','🚨','High Fall Risk','Fall risk is High. Please make sure someone is nearby when moving. Bed alarm should be on. Call button within reach.');
+      }else{
+        h+=card('warn','⚠️','Moderate Fall Risk','Some extra support is needed when moving. Safety measures are in place.');
+      }
+      h+=card('info','💪','About Muscle Health','We check the temporalis muscle (near the temple) and estimated grip strength. These help predict recovery and fall risk.');
+    }else if(activeSheet==='speech'){
+      var sp=d.speech;
+      var spDone=sp&&sp.s!=='—'&&sp.s!=='NO MIC';
+      if(!spDone){
+        h+=card('info','🗣️','Speech Test Pending','The speech battery has not run yet. The patient will say 4 phrases. The AI measures clarity, speed, articulation, and motor coordination.');
+      }else if(sp.s==='CLEAR'){
+        h+=card('good','✅','Speech Sounds Normal','All four speech tests were within normal range. No significant slurring, slowness, or coordination issues detected.');
+      }else if(sp.s==='MILD'){
+        h+=card('warn','⚠️','Possible Mild Speech Change','Some slowing or word errors detected across the speech tests. A clinical speech assessment is recommended.');
+      }else{
+        h+=card('alert','🚨','Possible Speech Impairment','Significant speech changes detected. This may indicate dysarthria or motor speech difficulty. Prompt clinical evaluation recommended.');
+      }
+      if(spDone&&sp.results){
+        var rr=sp.results;
+        if(rr.baseline&&!rr.baseline.error)
+          h+=card('base','🗣️','Baseline: "The sky is blue..."',rr.baseline.label+' — '+rr.baseline.wpm+' WPM · Accuracy: '+rr.baseline.accuracy+'%');
+        if(rr.articulation&&!rr.articulation.error)
+          h+=card('base','👅','Articulation: "Peter Piper..."',rr.articulation.label+' — Said: "'+rr.articulation.transcript+'"');
+        if(rr.motor&&!rr.motor.error)
+          h+=card('base','⚡','Motor: "Pa-ta-ka"',rr.motor.label+' — '+rr.motor.sps+' syllables/sec (normal ≥5)');
+        if(rr.natural&&!rr.natural.error)
+          h+=card('base','🎵','Natural: "I like piña coladas..."',rr.natural.label+' — '+rr.natural.wpm+' WPM');
+      }
+      h+=card('info','ℹ️','About This Battery','Four phrases modeled on Mayo Clinic / NIH motor speech protocols: baseline pacing, bilabial articulation stress, diadochokinesis, and natural speech. Results are screening proxies, not diagnoses.');
+    }else if(activeSheet==='info'){
+      h+=card('info','📷','Live AI Assessment','Real-time cranial nerve exam using your phone camera and MediaPipe AI landmark tracking — 478 facial points at 30 FPS.');
+      h+=card('base','🤖','AI Engine','Temporal motion scoring across eye movement, facial symmetry, jaw activation, and mouth opening. Calibrated to your baseline at exam start.');
+      h+=card('good','🔗','On-Device & Private','Everything runs in your browser via WebAssembly — no raw video or audio leaves the device. Results stay local and exportable.');
+      h+=card('info','💬','Plain English Summary','Your eye movements and smile were measured for symmetry. The jaw and mouth opening tests check nerve function. Results are explained both in medical terms and in plain language for patients and families.');
+    }
+    h+='</div>';
+  }else{
+    h='<div class="cc">';
+    if(activeSheet==='cn'){
+      var dn2=Object.keys(cnR).length;
+      h+='<div class="ccard"><div class="cc-top"><span class="cc-lbl">Cranial Nerves II–XII</span><span class="cc-val" style="color:#7c3aed">'+dn2+'/10</span></div><div class="cc-bar"><div class="cc-fill" style="width:'+(dn2/10*100)+'%;background:#7c3aed"></div></div><div class="cn-pills">';
+      ['II','III','IV','V','VI','VII','IX','X','XI','XII'].forEach(function(cn){
+        var status=cnR[cn]||'pend';
+        var s=cnS[cn]!==undefined?Math.round(cnS[cn]*100)+'%':'—';
+        h+='<div class="cnp '+status+'" title="'+s+'">CN '+cn+'</div>';
+      });
+      h+='</div></div>';
+      // Individual scores
+      h+='<div class="ccard">';
+      Object.keys(cnS).forEach(function(cn){
+        var c=classifyScore(cnS[cn]);
+        h+=ccrow('CN '+cn+' Score',Math.round(cnS[cn]*100)+'%',c[1]==='good'?'g':c[1]==='warn'?'a':'r');
+      });
+      h+='</div>';
+    }else if(activeSheet==='gcs'){
+      var gDone=g.t!=='—';
+      h+='<div class="ccard"><div class="cc-top"><span class="cc-lbl">Glasgow Coma Scale</span><span class="cc-val" style="color:'+(gDone?'#16a34a':'#94a3b8')+'">'+g.t+'</span></div><div class="cc-bar"><div class="cc-fill" style="width:'+(gDone?'100':'0')+'%;background:#16a34a"></div></div>'+ccrow('Eye Opening (E)',g.e,gDone?'g':'')+ccrow('Verbal Response (V)',g.v,gDone?'g':'')+ccrow('Motor Response (M)',g.m,gDone?'g':'')+'</div>';
+    }else if(activeSheet==='cam'){
+      var cDone=cam.s!=='—'&&cam.s!=='N/A'&&cam.s!=='NO TRACK';
+      var cColor=cDone?(cam.inattention?'#dc2626':'#16a34a'):'#94a3b8';
+      var cPct=cDone?(cam.inattention?100:20):0;
+      h+='<div class="ccard"><div class="cc-top"><span class="cc-lbl">Video Attention Screen</span><span class="cc-val" style="color:'+cColor+'">'+cam.s+'</span></div><div class="cc-bar"><div class="cc-fill" style="width:'+cPct+'%;background:'+cColor+'"></div></div>'
+        +ccrow('Tracking Accuracy',cDone?cam.attScore+'%':'—',cDone?(cam.attScore>=80?'g':cam.attScore>=60?'a':'r'):'')
+        +ccrow('Est. Gaze Error',cDone?Math.round((1-cam.attScore/100)*6)+'°':'—',cDone?(cam.attScore>=80?'g':cam.attScore>=60?'a':'r'):'')
+        +ccrow('Time On Target',cDone?cam.timeOnTarget+'%':'—',cDone?(cam.timeOnTarget>=80?'g':cam.timeOnTarget>=60?'a':'r'):'')
+        +ccrow('Off-Target Breaks',cDone?cam.breaks:'—',cDone?(cam.breaks<=2?'g':cam.breaks<=3?'a':'r'):'')
+        +ccrow('Pursuit Lag',cDone?cam.pursuitLag+'ms':'—',cDone?(cam.pursuitLag<250?'g':cam.pursuitLag<300?'a':'r'):'')
+        +ccrow('Blink Rate /min',cDone?cam.blinkRate:'—',cDone?(cam.blinkRate>=5&&cam.blinkRate<=30?'g':'r'):'')
+        +ccrow('Criteria Met',cDone?cam.criteria+'/5':'—',cDone?(cam.criteria<=1?'g':cam.criteria<=2?'a':'r'):'')
+        +'</div>';
+    }else if(activeSheet==='fr'){
+      var fDone=fr.s!=='—'&&fr.s!=='N/A',fPct=fDone?56:0;
+      h+='<div class="ccard"><div class="cc-top"><span class="cc-lbl">Frailty Index</span><span class="cc-val" style="color:'+(fDone?'#d97706':'#94a3b8')+'">'+fr.s+'</span></div><div class="cc-bar"><div class="cc-fill" style="width:'+fPct+'%;background:#d97706"></div></div>'+ccrow('CFS Score',fr.c,'')+ccrow('Temporalis Wasting',fr.t,fr.t.includes('↓')?'r':'')+ccrow('Grip Strength',fr.g,fr.g.includes('↓')?'r':'')+ccrow('Fall Risk (Hopkins)',fr.f,fr.f==='HIGH'?'r':'')+'</div>';
+    }else if(activeSheet==='speech'){
+      var sp2=d.speech;
+      var sp2Done=sp2&&sp2.s!=='—'&&sp2.s!=='NO MIC';
+      var sp2Color=sp2Done?(sp2.s==='CLEAR'?'#16a34a':sp2.s==='MILD'?'#d97706':'#dc2626'):'#94a3b8';
+      h+='<div class="ccard"><div class="cc-top"><span class="cc-lbl">Speech Battery</span><span class="cc-val" style="color:'+sp2Color+'">'+(sp2Done?sp2.score+'%':'—')+'</span></div><div class="cc-bar"><div class="cc-fill" style="width:'+(sp2Done?sp2.score:0)+'%;background:'+sp2Color+'"></div></div>'
+        +ccrow('Overall',sp2Done?sp2.label:'—',sp2Done?(sp2.s==='CLEAR'?'g':sp2.s==='MILD'?'a':'r'):'')
+        +'</div>';
+      if(sp2Done&&sp2.results){
+        var rr2=sp2.results;
+        if(rr2.baseline&&!rr2.baseline.error)
+          h+='<div class="ccard">'+ccrow('Baseline WPM',rr2.baseline.wpm>0?rr2.baseline.wpm+' WPM':'—',rr2.baseline.wpm>=158?'g':rr2.baseline.wpm>=117?'a':'r')+ccrow('Baseline Accuracy',rr2.baseline.accuracy+'%',rr2.baseline.accuracy>=90?'g':rr2.baseline.accuracy>=75?'a':'r')+ccrow('Baseline Duration',rr2.baseline.duration+'s',rr2.baseline.duration<=3?'g':rr2.baseline.duration<=4.1?'a':'r')+ccrow('Said','"'+rr2.baseline.transcript+'"','')+'</div>';
+        if(rr2.articulation&&!rr2.articulation.error)
+          h+='<div class="ccard">'+ccrow('Articulation Score',Math.round(rr2.articulation.score*100)+'%',rr2.articulation.sClass==='good'?'g':rr2.articulation.sClass==='warn'?'a':'r')+ccrow('Articulation Result',rr2.articulation.label,'')+'</div>';
+        if(rr2.motor&&!rr2.motor.error)
+          h+='<div class="ccard">'+ccrow('DDK Rate',rr2.motor.sps+' syl/sec',rr2.motor.sps>=5?'g':rr2.motor.sps>=3?'a':'r')+ccrow('DDK Score',Math.round(rr2.motor.score*100)+'%',rr2.motor.sClass==='good'?'g':rr2.motor.sClass==='warn'?'a':'r')+ccrow('DDK Result',rr2.motor.label,'')+'</div>';
+        if(rr2.natural&&!rr2.natural.error)
+          h+='<div class="ccard">'+ccrow('Natural WPM',rr2.natural.wpm+' WPM',rr2.natural.wpm>=158?'g':rr2.natural.wpm>=117?'a':'r')+ccrow('Natural Accuracy',rr2.natural.accuracy+'%',rr2.natural.accuracy>=90?'g':rr2.natural.accuracy>=75?'a':'r')+'</div>';
+      }
+    }else if(activeSheet==='info'){
+      h+='<div class="ccard">'+ccrow('Engine','MediaPipe FaceLandmarker','')+ccrow('Landmarks','478 (iris-enabled)','')+ccrow('Mode','Real-time VIDEO','')+ccrow('Scoring','Temporal + Symmetry','')+ccrow('Baseline','Per-session calibration','')+ccrow('Processing','100% in-browser (WASM)','')+'</div>';
+    }
+    h+='</div>';
+  }
+  document.getElementById('shBody').innerHTML=h;
+}
+
+// ═══════════════════════════════════════════════════
+// TRIAGE MODE — 6-step zero-hardware screen
+// ═══════════════════════════════════════════════════
+function mean(arr){return arr.length?arr.reduce(function(a,b){return a+b;},0)/arr.length:0;}
+
+// Decompose a column-major 4x4 facial transformation matrix into yaw/pitch/roll (degrees)
+function matrixToEuler(m){
+  if(!m||m.length<11)return{yaw:0,pitch:0,roll:0};
+  var r00=m[0], r10=m[1], r20=m[2], r21=m[6], r22=m[10];
+  var sy=Math.sqrt(r00*r00+r10*r10);
+  var pitch,yaw,roll, D=180/Math.PI;
+  if(sy>1e-6){
+    pitch=Math.atan2(r21,r22);
+    yaw=Math.atan2(-r20,sy);
+    roll=Math.atan2(r10,r00);
+  }else{
+    pitch=Math.atan2(-r21,r22); yaw=Math.atan2(-r20,sy); roll=0;
+  }
+  return{yaw:yaw*D, pitch:pitch*D, roll:roll*D};
+}
+
+// Estimate lighting quality (0..1) from mean luminance of the current video frame
+var _lightCanvas=null;
+function sampleLighting(video){
+  try{
+    if(!_lightCanvas){_lightCanvas=document.createElement('canvas');_lightCanvas.width=32;_lightCanvas.height=32;}
+    var lc=_lightCanvas.getContext('2d');
+    lc.drawImage(video,0,0,32,32);
+    var data=lc.getImageData(0,0,32,32).data;
+    var sum=0,n=0;
+    for(var i=0;i<data.length;i+=4){sum+=0.299*data[i]+0.587*data[i+1]+0.114*data[i+2];n++;}
+    var lum=sum/Math.max(n,1); // 0..255
+    var score;
+    if(lum<70)score=lum/70;
+    else if(lum>200)score=Math.max(0,1-(lum-200)/55);
+    else score=1;
+    return clamp(score,0,1);
+  }catch(e){return 0.70;}
+}
+
+// Run one capture window: set prompt, speak it, animate progress, collect frames
+async function triageStep(step){
+  document.getElementById('cnEmoji').textContent=step.emoji;
+  document.getElementById('cnPromptTitle').textContent=step.title;
+  document.getElementById('cnPromptSub').textContent=step.sub;
+  setStatus(step.name, step.bannerSub);                  // clear step name on status banner
+  await speakAndWait(step.title);                        // instruction completes BEFORE window opens
+  await w(400);
+  var fill=document.getElementById('cnProgressFill');
+  fill.style.transition='none'; fill.style.width='0%';
+  void fill.offsetWidth; // reflow
+  fill.style.transition='width '+step.dur+'ms linear';
+  setTimeout(function(){fill.style.width='100%';},30);
+  TRIAGE.frames=[]; TRIAGE.capturing=true;
+  if(CC_DEBUG)console.log('[CC] ▶ capture START '+step.id+' (iris='+BUF.iris.length+', face='+(!!faceLandmarker)+')');
+  await w(step.dur);
+  TRIAGE.capturing=false;
+  fill.style.transition='width 3s linear';
+  var frames=TRIAGE.frames.slice();
+  if(CC_DEBUG)console.log('[CC] ■ capture END   '+step.id+' → '+frames.length+' frames');
+  // Diagnostics: record this step's real captured-frame count (the numbers that were silently zero)
+  DIAG[step.id+'_frames']=frames.length;
+  // accumulate confidence inputs
+  TRIAGE.capturedFrames+=frames.length;
+  TRIAGE.expectedFrames+=Math.round(step.dur/33.3);      // ~30fps target
+  if(frames.length>=Math.max(10, step.dur/1000*3))TRIAGE.stepsComplete++;
+  return frames;
+}
+
+// ── Per-domain scoring — every function returns a normalized score in [0,1] ──
+function scoreCalib(frames){
+  if(frames.length<5){           // no usable calibration data → don't report false stability
+    TRIAGE.baseEAR=0.30; TRIAGE.baseYaw=0; TRIAGE.baseAsym=0; TRIAGE.baseMouth=0;
+    TRIAGE.calibStability=0;
+    return {score:0, label:'No data', flag:'warn', metric:'insufficient tracking', frames:frames.length, ok:false};
+  }
+  TRIAGE.baseEAR=mean(frames.map(function(f){return f.EAR;}))||0.30;
+  TRIAGE.baseYaw=mean(frames.map(function(f){return f.headYaw;}))||0;
+  TRIAGE.baseAsym=mean(frames.map(function(f){return f.cn7asym;}))||0;
+  TRIAGE.baseMouth=mean(frames.map(function(f){return f.mouthOpen;}))||0;
+  var earSD=stdDev(frames.map(function(f){return f.EAR;}));
+  var yawSD=stdDev(frames.map(function(f){return f.yawDeg;}));
+  TRIAGE.calibStability=clamp(1-(earSD/0.04 + yawSD/4)/2, 0, 1);
+  return {score:TRIAGE.calibStability, frames:frames.length, ok:frames.length>=15};
+}
+// PERCLOS — % of window with eyes closed (EAR below 55% of baseline). Flag >15%, urgent >30%.
+function scorePerclos(frames){
+  if(frames.length<5)return{score:0,label:'No data',flag:'warn',metric:'insufficient tracking'};
+  var thr=(TRIAGE.baseEAR||0.30)*0.55;
+  var closed=frames.filter(function(f){return f.EAR<thr;}).length;
+  var perclos=closed/frames.length;                       // 0..1, denom guarded ≥5
+  var pct=Math.round(perclos*100);
+  var flag=perclos<=0.15?'good':perclos<=0.30?'warn':'bad';
+  var label=perclos<=0.15?'Alert':perclos<=0.30?'Mild drowsiness':'Reduced alertness';
+  return{score:clamp(1-perclos/0.5,0,1), value:pct, metric:pct+'% eye-closure', label:label, flag:flag};
+}
+// CN VII resting asymmetry normalized to IOD. Flag if > 0.07 (7%).
+function scoreCN7(frames){
+  if(frames.length<5)return{score:0,label:'No data',flag:'warn',metric:'insufficient tracking'};
+  var asym=mean(frames.map(function(f){return f.cn7asym;}));
+  var flag=asym<0.045?'good':asym<=0.07?'warn':'bad';
+  var label=asym<0.045?'Symmetric at rest':asym<=0.07?'Borderline asymmetry':'Asymmetry flagged';
+  return{score:clamp(1-asym/0.14,0,1), value:asym, metric:'rest asym '+(asym*100).toFixed(1)+'% IOD', label:label, flag:flag};
+}
+// GCS eye-opening proxy. E4 if peak EAR > 80% baseline, E3 if EAR > 0.12, else E1.
+function scoreGCS(frames){
+  if(frames.length<5)return{score:0,label:'No data',flag:'warn',metric:'insufficient tracking',e:'—'};
+  var maxEAR=Math.max.apply(null,frames.map(function(f){return f.EAR;}));
+  var base=TRIAGE.baseEAR||0.30;
+  var e=maxEAR>base*0.80?4:maxEAR>0.12?3:1;
+  var flag=e===4?'good':e===3?'warn':'bad';
+  var label=e===4?'Eyes open / widen (E4)':e===3?'Reduced eye opening (E3)':'Minimal eye opening (E1)';
+  return{score:clamp(e/4,0,1), value:e, metric:'E'+e+' · peak EAR '+maxEAR.toFixed(2), label:label, flag:flag, e:e};
+}
+// CN XII tongue protrusion — tongueOut blendshape gate (>0.4); flag if no protrusion (maxMouth < 0.20).
+function scoreTongue(frames){
+  if(frames.length<5)return{score:0,label:'No data',flag:'warn',metric:'insufficient tracking'};
+  var maxTongue=Math.max.apply(null,frames.map(function(f){return f.tongueOut||0;}));
+  var maxMouth=Math.max.apply(null,frames.map(function(f){return f.mouthOpen;}));
+  var flag,label,score;
+  if(maxTongue>0.4){flag='good';label='Protrusion confirmed';score=clamp(0.70+maxTongue*0.30,0,1);}
+  else if(maxMouth>=0.20){flag='warn';label='Mouth opened, tongue not detected';score=clamp(maxMouth/0.4,0,1)*0.6;}
+  else{flag='bad';label='No protrusion';score=clamp(maxMouth/0.4,0,1)*0.4;}
+  return{score:score, value:maxMouth, tongueOut:maxTongue, metric:'tongueOut '+maxTongue.toFixed(2)+' · aperture '+maxMouth.toFixed(2), label:label, flag:flag};
+}
+// Head pose drift — SD of yaw/pitch/roll (degrees) over the window. Flag if any axis SD > 3°.
+function scoreHead(frames){
+  if(frames.length<5)return{score:0,label:'No data',flag:'warn',metric:'insufficient tracking'};
+  var yawSD=stdDev(frames.map(function(f){return f.yawDeg;}));
+  var pitchSD=stdDev(frames.map(function(f){return f.pitchDeg;}));
+  var rollSD=stdDev(frames.map(function(f){return f.rollDeg;}));
+  var maxSD=Math.max(yawSD,pitchSD,rollSD);
+  var flag=maxSD<1.5?'good':maxSD<=3?'warn':'bad';
+  var label=maxSD<1.5?'Stable':maxSD<=3?'Mild drift':'Drift flagged';
+  return{score:clamp(1-maxSD/6,0,1), value:maxSD, yawSD:yawSD, pitchSD:pitchSD, rollSD:rollSD,
+    metric:'max SD '+maxSD.toFixed(1)+'° (y'+yawSD.toFixed(1)+'/p'+pitchSD.toFixed(1)+'/r'+rollSD.toFixed(1)+')', label:label, flag:flag};
+}
+
+// Confidence: 0.35·validFramePct + 0.20·lighting + 0.25·calibStability + 0.20·completionRate
+// Returns the rolled-up confidence plus its four sub-components, all as 0-100 numbers.
+function computeConfidence(R){
+  var validFramePct=TRIAGE.expectedFrames>0?clamp(TRIAGE.capturedFrames/TRIAGE.expectedFrames,0,1):0;
+  var lightingScore=clamp(TRIAGE.lightingScore,0,1);
+  var calibStability=clamp(TRIAGE.calibStability,0,1);
+  var completionRate=clamp(TRIAGE.stepsComplete/6,0,1);
+  var conf=0.35*validFramePct + 0.20*lightingScore + 0.25*calibStability + 0.20*completionRate;
+  return {
+    confidence:Math.round(clamp(conf,0,1)*100),
+    validFramePct:Math.round(validFramePct*100),
+    lightingScore:Math.round(lightingScore*100),
+    calibStability:Math.round(calibStability*100),
+    completionRate:Math.round(completionRate*100)
+  };
+}
+
+// Overall: URGENT if any red flag fires, FLAG if 2+ borderline, WATCH if 1 borderline, else NORMAL.
+function computeTriageOverall(R){
+  var doms=[R.perclos,R.cn7,R.gcs,R.tongue,R.head];
+  var valid=doms.filter(function(d){return d.label!=='No data';}).length;
+  var bad=doms.filter(function(d){return d.flag==='bad';}).length;
+  var warn=doms.filter(function(d){return d.flag==='warn';}).length;
+  var status,label,cls,icon,txt,speak;
+  if(valid===0){
+    // No domain captured usable data — a technical failure, NOT a clinical flag.
+    status='INVALID';label='INCOMPLETE';cls='s-invalid';icon='⚠️';
+    txt='Screening could not be completed — no usable data was captured. Check the camera, lighting, and connection, then run again.';
+    speak='Screening could not be completed. No usable data was captured.';
+  }
+  else if(bad>=1){status='URGENT';label='URGENT';cls='s-urgent';icon='🚑';txt='A red-flag domain fired on screening. Prompt clinical evaluation is recommended.';speak='A red flag fired. Prompt clinical evaluation is recommended.';}
+  else if(warn>=2){status='FLAG';label='FLAG';cls='s-flag';icon='🚩';txt='Two or more domains were borderline. Clinical correlation is advised.';speak='Two or more findings were borderline. Clinical correlation is advised.';}
+  else if(warn===1){status='WATCH';label='WATCH';cls='s-watch';icon='👁️';txt='One borderline finding. Consider monitoring or re-screening.';speak='One borderline finding. Consider monitoring or re-screening.';}
+  else{status='NORMAL';label='NORMAL';cls='s-normal';icon='✅';txt='No significant findings on this zero-hardware screen.';speak='No significant findings on this screen.';}
+  var cc=computeConfidence(R);
+  return{status:status,label:label,cls:cls,icon:icon,txt:txt,speak:speak,
+    confidence:cc.confidence,
+    validFramePct:cc.validFramePct, lightingScore:cc.lightingScore,
+    calibStability:cc.calibStability, completionRate:cc.completionRate,
+    bad:bad,warn:warn};
+}
+
+// ── TRIAGE exam runner (replaces legacy CN sequence) ──
+async function startExam(){
+  if(examRunning||!cameraActive)return;
+  examRunning=true;
+  TRIAGE.active=true; TRIAGE.result=null;
+  TRIAGE.capturedFrames=0; TRIAGE.expectedFrames=0; TRIAGE.stepsComplete=0; TRIAGE.calibStability=0; TRIAGE.lightingScore=0;
+  TRIAGE.startMs=performance.now(); TRIAGE.renderFrames=0;
+  resetDiagForExam();
+  if(!DIAG.model_loaded)diagError('model not loaded at exam start (delegate='+DIAG.model_delegate+')');
+  hideResults();
+  var fwEl=document.querySelector('.fab-wrap'); if(fwEl)fwEl.style.display='none';  // hide FAB during TRIAGE
+  document.getElementById('alertBox').style.display='none';
+  document.getElementById('replayBtn').style.display='none';
+  document.getElementById('statusBanner').className='status-banner';
+  document.getElementById('cnPrompt').style.display='flex';
+
+  setStatus('TRIAGE Screen','6 quick steps — about 90 seconds');
+  await speakAndWait('Starting triage screening. Follow the on-screen prompts.');
+
+  // ── Hard stop if the AI model never loaded ──
+  // Don't run a pointless 65-second exam; save a complete diagnostic row and tell the user honestly.
+  if(!DIAG.model_loaded){
+    document.getElementById('cnPrompt').style.display='none';
+    TRIAGE.active=false; examRunning=false;
+    var Rf={calib:scoreCalib([]),perclos:scorePerclos([]),cn7:scoreCN7([]),gcs:scoreGCS([]),tongue:scoreTongue([]),head:scoreHead([])};
+    var ovf=computeTriageOverall(Rf);
+    ovf.examDurationSec=Math.round((performance.now()-TRIAGE.startMs)/100)/10;
+    ovf.avgFps=0;
+    TRIAGE.result={domains:Rf, overall:ovf};
+    saveExamToSupabase(TRIAGE.result);            // failed run is still recorded for the admin
+    setStatus('AI model failed to load','Reload the page to retry — check your connection');
+    document.getElementById('statusBanner').className='status-banner';
+    await speakAndWait('The A I model could not load. Please reload the page and check your connection.');
+    showResults();
+    return;
+  }
+
+  // Wait for face lock — voice stays continuous so the user is never staring at a silent screen
+  setStatus('Detecting face...','Center your face in the frame');
+  await speakAndWait('Looking for your face. Please center your face in the frame.');
+  var fw=0;
+  while(fw<150&&BUF.iris.length<20){
+    await w(100); fw++;
+    if(fw===50&&BUF.iris.length<20)await speakAndWait('Still looking. Make sure your face is well lit and centered.');
+  }
+  if(BUF.iris.length>=20){
+    await speakAndWait('Face detected. Beginning the screen.');
+  }else{
+    await speakAndWait('I could not get a clear lock on your face. Continuing anyway — results may be limited.');
+  }
+  TRIAGE.lightingScore=sampleLighting(document.getElementById('webcam'));
+
+  var R={};
+  R.calib  = scoreCalib(await triageStep(TRIAGE_STEPS[0]));
+  R.perclos= scorePerclos(await triageStep(TRIAGE_STEPS[1]));
+  R.cn7    = scoreCN7(await triageStep(TRIAGE_STEPS[2]));
+  R.gcs    = scoreGCS(await triageStep(TRIAGE_STEPS[3]));
+  R.tongue = scoreTongue(await triageStep(TRIAGE_STEPS[4]));
+  R.head   = scoreHead(await triageStep(TRIAGE_STEPS[5]));
+
+  document.getElementById('cnPrompt').style.display='none';
+  TRIAGE.active=false; examRunning=false;
+
+  var overall=computeTriageOverall(R);
+  var durSec=(performance.now()-TRIAGE.startMs)/1000;
+  overall.examDurationSec=Math.round(durSec*10)/10;
+  overall.avgFps=durSec>0?Math.round(TRIAGE.renderFrames/durSec):0;
+  TRIAGE.result={domains:R, overall:overall};
+  saveExamToSupabase(TRIAGE.result);
+
+  setStatus('✓ TRIAGE Complete', overall.label+' — results ready');
+  document.getElementById('statusBanner').className='status-banner complete';
+  positionOverlays();
+
+  await speakAndWait('Triage complete. '+overall.speak);
+  showResults();
+}
+
+// ── RESULTS SCREEN ──
+function showResults(){
+  var r=TRIAGE.result; if(!r)return;
+  var o=r.overall, d=r.domains;
+  function domCard(emoji,name,dom){
+    var fl=dom.flag==='good'?'flag-good':dom.flag==='warn'?'flag-warn':'flag-bad';
+    var ft=dom.flag==='good'?'OK':dom.flag==='warn'?'WATCH':'FLAG';
+    return '<div class="res-dom"><div class="res-dom-emoji">'+emoji+'</div>'
+      +'<div class="res-dom-main"><div class="res-dom-name">'+name+'</div>'
+      +'<div class="res-dom-metric">'+dom.label+' · '+dom.metric+'</div></div>'
+      +'<div class="res-dom-flag '+fl+'">'+ft+'</div></div>';
+  }
+  var h='';
+  h+='<div class="res-head"><div class="res-head-title">TRIAGE Results</div><button class="res-close" onclick="hideResults()">×</button></div>';
+  h+='<div class="res-status '+o.cls+'"><div class="res-status-icon">'+o.icon+'</div>'
+    +'<div class="res-status-label">'+o.label+'</div>'
+    +'<div class="res-status-txt">'+o.txt+'</div>'
+    +'<div class="res-conf">◉ Confidence '+o.confidence+'%</div></div>';
+  h+='<div class="res-domains">'
+    +domCard('👁️','Alertness (PERCLOS)',d.perclos)
+    +domCard('😐','Facial Motor (CN VII)',d.cn7)
+    +domCard('⬆️','GCS Proxy',d.gcs)
+    +domCard('👅','Tongue (CN XII)',d.tongue)
+    +domCard('🧭','Head Stability',d.head)
+    +'</div>';
+  h+='<div class="res-actions">'
+    +'<button class="res-btn primary" onclick="resetExam()">RUN AGAIN</button>'
+    +'<button class="res-btn primary" disabled>RUN ACUTE MODE — Coming Soon</button>'
+    +'<button class="res-btn outline" onclick="exportReport()">EXPORT REPORT</button>'
+    +'</div>';
+  h+='<div class="res-disclaim">This screening tool aids clinical assessment. It does not constitute a diagnosis.</div>';
+  document.getElementById('resultsBody').innerHTML=h;
+  document.getElementById('results').classList.add('show');
+  var fwEl=document.querySelector('.fab-wrap'); if(fwEl)fwEl.style.display='flex';  // FAB available after results
+}
+function hideResults(){
+  var el=document.getElementById('results');
+  if(el)el.classList.remove('show');
+}
+function exportReport(){
+  var r=TRIAGE.result; if(!r)return;
+  var o=r.overall, d=r.domains;
+  var lines=[
+    'CranialCheck AI — TRIAGE Screening Report',
+    'Zero-hardware · 100% in-browser','',
+    'OVERALL: '+o.label+'   (Confidence '+o.confidence+'%)','',
+    'Alertness (PERCLOS):    '+d.perclos.label+' — '+d.perclos.metric,
+    'Facial Motor (CN VII):  '+d.cn7.label+' — '+d.cn7.metric,
+    'GCS Proxy:              '+d.gcs.label+' — '+d.gcs.metric,
+    'Tongue (CN XII):        '+d.tongue.label+' — '+d.tongue.metric,
+    'Head Stability:         '+d.head.label+' — '+d.head.metric,'',
+    'This screening tool aids clinical assessment. It does not constitute a diagnosis.',
+    'Contact: rich.rubel@predictwellhealth.ai'
+  ];
+  var blob=new Blob([lines.join('\n')],{type:'text/plain'});
+  var ts=new Date().toISOString().replace(/[:.]/g,'-').replace('T','_').slice(0,19);
+  var a=document.createElement('a');
+  a.href=URL.createObjectURL(blob);
+  a.download='cranialcheck-triage-'+ts+'.txt';
+  document.body.appendChild(a); a.click(); a.remove();
+}
+
+async function saveExamToSupabase(result) {
+  if(!sb){ console.warn('[CC] No Supabase client — skipping save (exam still ran).'); return; }
+  try {
+    var o = result.overall;
+    var d = result.domains;
+    var num = function(x){ return (typeof x==='number' && isFinite(x)) ? x : null; };
+    var rnd = function(x,p){ return (typeof x==='number' && isFinite(x)) ? Math.round(x*p)/p : null; };
+    var record = {
+      exam_mode: 'TRIAGE',
+      overall_result: o.status,
+      confidence: o.confidence,
+      // labels / metrics / flags
+      perclos_label: d.perclos.label,
+      perclos_metric: d.perclos.metric,
+      perclos_flag: d.perclos.flag,
+      cn7_label: d.cn7.label,
+      cn7_metric: d.cn7.metric,
+      cn7_flag: d.cn7.flag,
+      gcs_label: d.gcs.label,
+      gcs_metric: d.gcs.metric,
+      gcs_flag: d.gcs.flag,
+      tongue_label: d.tongue.label,
+      tongue_metric: d.tongue.metric,
+      tongue_flag: d.tongue.flag,
+      head_label: d.head.label,
+      head_metric: d.head.metric,
+      head_flag: d.head.flag,
+      // raw numeric values
+      perclos_value: num(d.perclos.value),          // 0-100 (%)
+      cn7_value: rnd(d.cn7.value,1000),              // asymmetry decimal
+      gcs_e: num(d.gcs.e),                           // integer E score
+      tongue_value: rnd(d.tongue.value,1000),        // aperture decimal
+      head_yaw_sd: rnd(d.head.yawSD,100),            // degrees
+      head_pitch_sd: rnd(d.head.pitchSD,100),        // degrees
+      head_roll_sd: rnd(d.head.rollSD,100),          // degrees
+      // quality / confidence sub-components (0-100)
+      valid_frame_pct: num(o.validFramePct),
+      lighting_score: num(o.lightingScore),
+      calibration_stability: num(o.calibStability),
+      completion_rate: num(o.completionRate),
+      exam_duration_sec: num(o.examDurationSec),
+      avg_fps: num(o.avgFps),
+      // subject metadata (no input yet — schema-ready)
+      subject_age: null,
+      subject_sex: null,
+      subject_id: null,
+      device_info: navigator.userAgent,
+      session_id: (function(){ try{ return sessionStorage.getItem('cc_demo_access')||'guest'; }catch(e){return 'guest';} })(),
+      // ── run diagnostics (real, measured during this run) ──
+      model_loaded: !!DIAG.model_loaded,
+      model_delegate: DIAG.model_delegate,
+      face_detected: !!DIAG.face_detected,
+      calib_frames: DIAG.calib_frames,
+      perclos_frames: DIAG.perclos_frames,
+      cn7_frames: DIAG.cn7_frames,
+      gcs_frames: DIAG.gcs_frames,
+      tongue_frames: DIAG.tongue_frames,
+      head_frames: DIAG.head_frames,
+      avg_iris_count: DIAG.detectFrames>0 ? Math.round(DIAG.irisSum/DIAG.detectFrames*10)/10 : 0,
+      min_fps: DIAG.min_fps,
+      max_fps: DIAG.max_fps,
+      error_log: DIAG.errors.length ? DIAG.errors.join(' | ') : null
+    };
+    var res = await sb.from('exams').insert([record]);
+    if(res.error) console.warn('Supabase save error:', res.error.message);
+    else console.log('Exam saved to Supabase');
+  } catch(e) {
+    console.warn('Supabase save failed:', e.message);
+  }
+}
+
+// ═══════════════════════════════════════════════════
+// DEMO ACCESS GATE
+// ═══════════════════════════════════════════════════
+function checkGate(){
+  var input=document.getElementById('gateInput');
+  var err=document.getElementById('gateErr');
+  var val=(input.value||'').trim().toLowerCase();
+  if(val==='cranialcheck2026'){
+    try{sessionStorage.setItem('cc_demo_access','1');}catch(e){}
+    err.textContent='';
+    var g=document.getElementById('gate');
+    g.classList.add('hide');
+    setTimeout(function(){g.style.display='none';},500);
+  }else{
+    err.textContent='Incorrect access code';
+    input.value='';
+    input.classList.remove('shake'); void input.offsetWidth; input.classList.add('shake');
+  }
+}
+(function(){
+  var authed=false;
+  try{authed=sessionStorage.getItem('cc_demo_access')==='1';}catch(e){}
+  var g=document.getElementById('gate');
+  if(authed){ if(g)g.style.display='none'; }
+  else{ var gi=document.getElementById('gateInput'); if(gi)setTimeout(function(){gi.focus();},300); }
+})();
+</script>
+</body>
+</html>
