@@ -54,7 +54,7 @@ body{font-family:var(--f);background:#000;-webkit-font-smoothing:antialiased}
 .live-dot{width:6px;height:6px;border-radius:50%;background:var(--green);animation:pulse 1.5s infinite}
 
 /* ── MODE BAR ── */
-.mode-bar{display:flex;flex-wrap:wrap;justify-content:center;align-items:flex-start;gap:6px;padding:8px 12px;border-top:1px solid var(--border);background:var(--surface2)}
+.mode-bar{display:flex;flex-wrap:wrap;justify-content:center;align-items:flex-start;gap:6px 6px;row-gap:10px;padding:8px 12px 18px;border-top:1px solid var(--border);background:var(--surface2)}
 .mode-bar::-webkit-scrollbar{display:none}
 .mode-wrap{display:flex;flex-direction:column;align-items:center;gap:3px;flex-shrink:0;min-width:74px}
 .mode-btn{width:100%;padding:6px 12px;border-radius:20px;border:1px solid var(--border);background:var(--surface);font-size:11px;font-weight:700;color:var(--tx2);cursor:pointer;font-family:var(--f);white-space:nowrap;transition:all .2s;text-align:center}
@@ -812,6 +812,16 @@ function sizeMeshCanvas(){
 }
 window.addEventListener('resize',function(){if(cameraActive)sizeMeshCanvas();});
 window.addEventListener('orientationchange',function(){setTimeout(function(){if(cameraActive)sizeMeshCanvas();},300);});
+// Start the Begin screen BELOW the (now wrapped, taller) topbar so its content centers in the visible
+// area and the logo isn't clipped. Start-screen only — never affects the live exam/video/capture.
+function fitStartScreen(){
+  try{ var tb=document.querySelector('.topbar'), ss=document.getElementById('startScreen');
+    if(tb&&ss) ss.style.top=tb.offsetHeight+'px'; }catch(e){}
+}
+window.addEventListener('load',fitStartScreen);
+window.addEventListener('resize',fitStartScreen);
+window.addEventListener('orientationchange',function(){setTimeout(fitStartScreen,300);});
+setTimeout(fitStartScreen,200);
 
 // Map a normalized MediaPipe landmark (relative to the full video frame) onto the canvas,
 // reproducing the video's object-fit:cover crop and mirroring the front camera in math.
