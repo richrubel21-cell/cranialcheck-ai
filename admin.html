@@ -318,7 +318,7 @@ function renderDashboard(){
   h+='<div class="section-t">Exam Records</div>';
   h+='<div class="table-card"><div class="table-scroll"><table><thead><tr>'
     +'<th>#</th><th>Date &amp; Time</th><th>Mode</th><th>Result</th><th>Confidence</th>'
-    +'<th>Alertness</th><th>Facial Motor</th><th>GCS</th><th>Tongue</th><th>Head</th><th>Device</th>'
+    +'<th>Alertness</th><th>Pursuit</th><th>Saccades</th><th>Facial Motor</th><th>Tongue</th><th>Head</th><th>Device</th>'
     +'</tr></thead><tbody>';
   var rv=function(v,dec){return (v==null||isNaN(v))?'—':Number(v).toFixed(dec);};
   var ri=function(v){return (v==null||isNaN(v))?'—':Math.round(v);};
@@ -329,7 +329,7 @@ function renderDashboard(){
     var headRaw='yaw σ '+rv(r.head_yaw_sd,1)+'° · pitch σ '+rv(r.head_pitch_sd,1)+'° · roll σ '+rv(r.head_roll_sd,1)+'°';
     // failure detection — model down, no face, or any step captured zero frames
     var modelOk=r.model_loaded===true, faceOk=r.face_detected===true;
-    var stepFrames=[r.calib_frames,r.perclos_frames,r.cn7_frames,r.gcs_frames,r.tongue_frames,r.head_frames];
+    var stepFrames=[r.calib_frames,r.perclos_frames,r.cn7_frames,r.tongue_frames,r.head_frames];
     var anyZero=stepFrames.some(function(x){return x==null||Number(x)===0;});
     var broken=(!modelOk)||(!faceOk)||anyZero;
     var cls=broken?' class="brk"':'';
@@ -341,26 +341,27 @@ function renderDashboard(){
       +'<td><span class="badge" style="background:'+m.badge+';color:'+m.hex+'">'+esc(r.overall_result||'—')+'</span></td>'
       +'<td class="mono">'+(r.confidence!=null?r.confidence+'%':'—')+'</td>'
       +'<td class="'+flagClass(r.perclos_flag)+'">'+esc(r.perclos_label||'—')+raw('(PERCLOS: '+ri(r.perclos_value)+'%)')+'</td>'
+      +'<td class="'+flagClass(r.pursuit_flag)+'">'+esc(r.pursuit_label||'—')+raw('(sync: '+ri(r.pursuit_value)+'%)')+'</td>'
+      +'<td class="'+flagClass(r.saccades_flag)+'">'+esc(r.saccades_label||'—')+raw('(acc: '+ri(r.saccades_value)+'%)')+'</td>'
       +'<td class="'+flagClass(r.cn7_flag)+'">'+esc(r.cn7_label||'—')+raw('(asym: '+rv(r.cn7_value,3)+')')+'</td>'
-      +'<td class="'+flagClass(r.gcs_flag)+'">'+esc(r.gcs_label||'—')+raw('(E: '+ri(r.gcs_e)+')')+'</td>'
       +'<td class="'+flagClass(r.tongue_flag)+'">'+esc(r.tongue_label||'—')+raw('(aperture: '+rv(r.tongue_value,2)+')')+'</td>'
       +'<td class="'+flagClass(r.head_flag)+'">'+esc(r.head_label||'—')+raw('('+headRaw+')')+'</td>'
       +'<td>'+esc(browserName(r.device_info))+'</td>'
       +'</tr>';
     // quality metrics row
-    h+='<tr class="detail-row'+(broken?' brk':'')+'"'+bg+'><td colspan="11">'
+    h+='<tr class="detail-row'+(broken?' brk':'')+'"'+bg+'><td colspan="12">'
       +'Valid frames: '+ri(r.valid_frame_pct)+'% &nbsp;|&nbsp; Lighting: '+ri(r.lighting_score)+'% &nbsp;|&nbsp; '
       +'Calibration: '+ri(r.calibration_stability)+'% &nbsp;|&nbsp; Completion: '+ri(r.completion_rate)+'% &nbsp;|&nbsp; '
       +'Duration: '+rv(r.exam_duration_sec,1)+'s &nbsp;|&nbsp; FPS: '+ri(r.avg_fps)
       +'</td></tr>';
     // diagnostics row
-    h+='<tr class="diag-row'+(broken?' brk':'')+'"'+bg+'><td colspan="11">'
+    h+='<tr class="diag-row'+(broken?' brk':'')+'"'+bg+'><td colspan="12">'
       +'<span class="diag-k">Model:</span> '+(modelOk
           ?'<b style="color:#16a34a">loaded ('+esc(r.model_delegate||'?')+')</b>'
           :'<b style="color:#dc2626">FAILED ('+esc(r.model_delegate||'none')+')</b>')
       +' &nbsp;|&nbsp; <span class="diag-k">Face:</span> '+(faceOk?'<b style="color:#16a34a">yes</b>':'<b style="color:#dc2626">NO</b>')
       +' &nbsp;|&nbsp; <span class="diag-k">Frames</span> calib '+fcell(r.calib_frames)+' · PERCLOS '+fcell(r.perclos_frames)
-        +' · CN7 '+fcell(r.cn7_frames)+' · GCS '+fcell(r.gcs_frames)+' · tongue '+fcell(r.tongue_frames)+' · head '+fcell(r.head_frames)
+        +' · CN7 '+fcell(r.cn7_frames)+' · tongue '+fcell(r.tongue_frames)+' · head '+fcell(r.head_frames)
       +' &nbsp;|&nbsp; <span class="diag-k">Iris:</span> '+rv(r.avg_iris_count,1)+' &nbsp;|&nbsp; <span class="diag-k">FPS:</span> '+ri(r.min_fps)+'–'+ri(r.max_fps)
       +(r.error_log?'<div class="diag-err">⚠ '+esc(r.error_log)+'</div>':'')
       +'</td></tr>';
@@ -392,6 +393,8 @@ function exportCSV(){
   // with any unexpected columns appended so nothing is ever omitted.
   var preferred=['id','created_at','exam_mode','overall_result','confidence',
     'perclos_label','perclos_metric','perclos_flag','perclos_value',
+    'pursuit_label','pursuit_metric','pursuit_flag','pursuit_value',
+    'saccades_label','saccades_metric','saccades_flag','saccades_value',
     'cn7_label','cn7_metric','cn7_flag','cn7_value',
     'gcs_label','gcs_metric','gcs_flag','gcs_e',
     'tongue_label','tongue_metric','tongue_flag','tongue_value',

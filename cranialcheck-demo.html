@@ -2478,7 +2478,7 @@ async function saveExamToSupabase(result) {
     // Guard: TRIAGE blueprint changed (gcs removed; pursuit/saccades added). Missing domains → {}
     // so the existing Supabase columns serialize to null instead of throwing. (pursuit/saccades
     // have no columns yet — they'll persist once the table is migrated.)
-    ['perclos','cn7','gcs','tongue','head'].forEach(function(k){ if(!d[k]) d[k]={}; });
+    ['perclos','pursuit','saccades','cn7','gcs','tongue','head'].forEach(function(k){ if(!d[k]) d[k]={}; });
     var num = function(x){ return (typeof x==='number' && isFinite(x)) ? x : null; };
     var rnd = function(x,p){ return (typeof x==='number' && isFinite(x)) ? Math.round(x*p)/p : null; };
     var record = {
@@ -2501,6 +2501,9 @@ async function saveExamToSupabase(result) {
       head_label: d.head.label,
       head_metric: d.head.metric,
       head_flag: d.head.flag,
+      // oculomotor (new TRIAGE steps 2 & 3)
+      pursuit_label: d.pursuit.label,  pursuit_metric: d.pursuit.metric,  pursuit_flag: d.pursuit.flag,  pursuit_value: num(d.pursuit.value),
+      saccades_label: d.saccades.label, saccades_metric: d.saccades.metric, saccades_flag: d.saccades.flag, saccades_value: num(d.saccades.value),
       // raw numeric values
       perclos_value: num(d.perclos.value),          // 0-100 (%)
       cn7_value: rnd(d.cn7.value,1000),              // asymmetry decimal
