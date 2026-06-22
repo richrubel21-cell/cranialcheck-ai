@@ -2401,12 +2401,20 @@ async function runGazeCalibration(){
                                     v:mean(use.map(function(f){return f.rawV;})), sx:pts[i][0], sy:pts[i][1]});
   }
   if(attDotEl)attDotEl.style.display='none';
-  var cal=fitGazeCal(samples);
-  if(cal){
-    var err=mean(samples.map(function(p){ return Math.hypot(cal.ax*p.h+cal.bx*p.v+cal.cx-p.sx, cal.ay*p.h+cal.by*p.v+cal.cy-p.sy); }));
-    if(isFinite(err) && err<0.18){ GAZE_CAL=cal; CAL_QUALITY=Math.round((1-Math.min(err/0.18,1))*100); }
+  var cal=fitGazeCal(samples), err=NaN, hSpread=0, vSpread=0;
+  if(samples.length>=2){
+    var hs=samples.map(function(s){return s.h;}), vs=samples.map(function(s){return s.v;});
+    hSpread=Math.max.apply(null,hs)-Math.min.apply(null,hs); vSpread=Math.max.apply(null,vs)-Math.min.apply(null,vs);
   }
-  if(CC_DEBUG)console.log('[CC] gaze calibration: '+(GAZE_CAL?('OK, quality '+CAL_QUALITY+'%'):'fell back to uncalibrated')+' ('+samples.length+' pts)');
+  if(cal){
+    err=mean(samples.map(function(p){ return Math.hypot(cal.ax*p.h+cal.bx*p.v+cal.cx-p.sx, cal.ay*p.h+cal.by*p.v+cal.cy-p.sy); }));
+    if(isFinite(err) && err<0.22){ GAZE_CAL=cal; CAL_QUALITY=Math.round((1-Math.min(err/0.22,1))*100); }   // loosened 0.18→0.22 (saccade/pursuit scoring is direction-tolerant)
+  }
+  // INSTRUMENTATION → diag_json: tells us exactly why calibration passed/failed on each real device.
+  try{ DIAG.cal_ok=!!GAZE_CAL; DIAG.cal_err=isFinite(err)?Math.round(err*1000)/1000:null;
+       DIAG.cal_quality=CAL_QUALITY; DIAG.cal_pts=samples.length;
+       DIAG.cal_hspread=Math.round(hSpread*1000)/1000; DIAG.cal_vspread=Math.round(vSpread*1000)/1000; }catch(e){}
+  if(CC_DEBUG)console.log('[CC] gaze calibration: '+(GAZE_CAL?('OK, quality '+CAL_QUALITY+'%'):'fell back')+' · err='+(isFinite(err)?err.toFixed(3):'NA')+' · hSpread='+hSpread.toFixed(3)+' · '+samples.length+' pts');
   return !!GAZE_CAL;
 }
 
