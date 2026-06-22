@@ -546,7 +546,8 @@ var STEP={
   // extended battery
   okn:     {id:'okn',   type:'okn',   emoji:'🦓', name:'Moving Stripes', bannerSub:'Watch the stripes',          title:'Watch the moving stripes — let your eyes follow them', sub:'Optokinetic nystagmus (OKN)', dur:12000},
   hints:   {id:'hints', type:'hints', emoji:'🌀', name:'Vestibular',     bannerSub:'Stare at the dot, hold still', title:'Stare at the center dot and hold completely still',   sub:'HINTS — nystagmus + skew',    dur:7000, showDot:false},
-  rt:      {id:'rt',    type:'rt',    emoji:'⏱️', name:'Reaction Time',  bannerSub:'Tap when the dot turns green', title:'Tap the screen the instant the dot turns GREEN',      sub:'Reaction time',               dur:16000}
+  rt:      {id:'rt',    type:'rt',    emoji:'⏱️', name:'Reaction Time',  bannerSub:'Tap when the dot turns green', title:'Tap the screen the instant the dot turns GREEN',      sub:'Reaction time',               dur:16000},
+  plr:     {id:'plr',   type:'plr',   emoji:'💡', name:'Pupil Response', bannerSub:'Look at the screen — it will flash', title:'Keep your eyes open — the screen will flash briefly', sub:'Pupil light reflex (beta)',   dur:4000}
 };
 function seq(){
   var ids=[].slice.call(arguments);
@@ -561,7 +562,7 @@ function seq(){
 // (antisaccade / NPC / OKN / CN V·IX·X·XI come in later phases.)
 var TRIAGE_STEPS   = seq('calib','perclos','pursuit','saccades','cn7','tongue','head');
 var ACUTE_STEPS    = seq('calib','perclos','pursuit','saccades','antisac','npc','cn7','tongue','head','ddk');
-var EXTENDED_STEPS = seq('calib','perclos','pursuit','saccades','antisac','npc','okn','hints','cn7','cn5','cn910','tongue','cn11','head','rt','spBase','spArtic','ddk','spNat');
+var EXTENDED_STEPS = seq('calib','perclos','pursuit','saccades','antisac','npc','okn','hints','plr','cn7','cn5','cn910','tongue','cn11','head','rt','spBase','spArtic','ddk','spNat');
 var MODE_STEPS     = {TRIAGE:TRIAGE_STEPS, ACUTE:ACUTE_STEPS, EXTENDED:EXTENDED_STEPS};
 var lastMode='TRIAGE';
 function highlightMode(mode){
@@ -2651,6 +2652,58 @@ function scoreRT(trials){
   return{score:clamp(1-(m-250)/400,0,1), value:Math.round(m), label:label, flag:flag, metric:Math.round(m)+'ms mean ('+trials.length+' trials)'};
 }
 
+// ── PHASE 6: PLR (beta) ── screen-flash pupillometry proxy. NOTE: MediaPipe gives iris, not pupil,
+// so this samples iris-center luminance (constriction → lighter center) — experimental, soft-capped.
+var plrEl=null, _plrC=null;
+function createPlrEl(){
+  if(plrEl)return;
+  plrEl=document.createElement('div');
+  plrEl.style.cssText='position:fixed;inset:0;z-index:48;pointer-events:none;display:none;background:#fff;';
+  document.body.appendChild(plrEl);
+}
+function sampleIrisLum(){
+  try{
+    var lr=lastResults; if(!lr||!lr.faceLandmarks||!lr.faceLandmarks.length)return null;
+    var lm=lr.faceLandmarks[0]; if(lm.length<=473)return null;
+    var v=_ccVideo, vw=v.videoWidth, vh=v.videoHeight; if(!vw)return null;
+    if(!_plrC){_plrC=document.createElement('canvas');_plrC.width=24;_plrC.height=24;}
+    var ctx=_plrC.getContext('2d'), tot=0,n=0;
+    [lm[468],lm[473]].forEach(function(p){
+      var cx=p.x*vw, cy=p.y*vh, s=Math.max(8,vw*0.02);
+      ctx.drawImage(v, cx-s/2, cy-s/2, s, s, 0,0,24,24);
+      var d=ctx.getImageData(8,8,8,8).data;            // central patch
+      for(var i=0;i<d.length;i+=4){ tot+=0.299*d[i]+0.587*d[i+1]+0.114*d[i+2]; n++; }
+    });
+    return n?tot/n:null;
+  }catch(e){ return null; }
+}
+async function runPLR(durMs){
+  createPlrEl();
+  var base=[], t0=performance.now();
+  while(performance.now()-t0<1500){ var l=sampleIrisLum(); if(l!=null)base.push(l); await w(120); }   // baseline
+  plrEl.style.display='block';                                                                          // flash
+  var flashed=[], t1=performance.now();
+  while(performance.now()-t1<2000){ var l2=sampleIrisLum(); if(l2!=null)flashed.push(l2); await w(120); }
+  plrEl.style.display='none';
+  return {base:mean(base), flashed:mean(flashed), n:base.length+flashed.length};
+}
+async function plrStep(step){
+  document.getElementById('cnEmoji').textContent=step.emoji;
+  document.getElementById('cnPromptTitle').textContent=step.title;
+  document.getElementById('cnPromptSub').textContent=step.sub;
+  setStatus(step.name, step.bannerSub);
+  await speakAndWait(step.title); await w(300);
+  var r=await runPLR(step.dur); DIAG[step.id+'_frames']=r.n; if(r.n>=8)TRIAGE.stepsComplete++;
+  return r;
+}
+function scorePLR(r){
+  if(!r||r.n<8||!isFinite(r.base)||!isFinite(r.flashed))return{score:0,label:'Not assessed',flag:'warn',metric:'experimental — needs dedicated pupillometry'};
+  var resp=r.flashed-r.base;                          // constriction → lighter iris center under flash
+  var flag=resp>6?'good':resp>1?'warn':'bad';
+  var label=resp>6?'Light response present':resp>1?'Weak response':'No measurable response';
+  return{score:clamp(resp/15,0,1), value:Math.round(resp), label:label, flag:flag, metric:'Δ luminance '+resp.toFixed(0)+' (beta — experimental)'};
+}
+
 // ── SPEECH STEP (mic, Web Speech API) ── reuses SPEECH_TESTS / runSpeechTest / scoreDDK / scoreSpeech.
 async function speechStep(step){
   var st=null,i; for(i=0;i<SPEECH_TESTS.length;i++){ if(SPEECH_TESTS[i].id===step.speechId){st=SPEECH_TESTS[i];break;} }
@@ -2760,6 +2813,7 @@ async function startExam(mode){
     else if(st.type==='hints'){ R[st.id]=scoreHINTS(await dotStep(st)); }
     else if(st.type==='okn'){ R[st.id]=scoreOKN(await oknStep(st)); }
     else if(st.type==='rt'){ R[st.id]=scoreRT(await rtStep(st)); }
+    else if(st.type==='plr'){ R[st.id]=scorePLR(await plrStep(st)); }
     else if(st.type==='speech'){ try{ SPEECHACC.push(await speechStep(st)); }catch(e){ SPEECHACC.push({id:st.speechId,label:st.name,res:{error:'speech error',score:0,label:'No response',flag:'warn'}}); if(TRIAGE.active)diagError('speech: '+(e&&e.message)); } }
     else { var fr=await triageStep(st); var fn=HOLD[st.id]; if(fn)R[st.id]=fn(fr); }
   }
@@ -2773,6 +2827,7 @@ async function startExam(mode){
   overall.examDurationSec=Math.round(durSec*10)/10;
   overall.avgFps=durSec>0?Math.round(TRIAGE.renderFrames/durSec):0;
   TRIAGE.result={domains:R, overall:overall, mode:mode};
+  try{ TRIAGE.result.prev=await fetchPrevExam(mode); }catch(e){}   // longitudinal (beta) — fetch BEFORE save
   saveExamToSupabase(TRIAGE.result);
 
   setStatus('✓ '+mode+' Complete', overall.label+' — results ready');
@@ -2801,6 +2856,12 @@ function showResults(){
     +'<div class="res-status-label">'+o.label+'</div>'
     +'<div class="res-status-txt">'+o.txt+'</div>'
     +'<div class="res-conf">◉ Confidence '+o.confidence+'%</div></div>';
+  if(r.prev){
+    var pd=''; try{ pd=new Date(r.prev.created_at).toLocaleString(); }catch(e){ pd=r.prev.created_at||''; }
+    h+='<div style="background:#fff;border:1px solid #E2E8F0;border-radius:12px;padding:11px 14px;margin-bottom:14px;font-size:12px;color:#4A5B73">'
+      +'<b style="color:#0A1E38">Longitudinal</b> <span style="opacity:.6">· beta</span><br>Previous '+(r.mode||'TRIAGE')
+      +' screen: <b>'+esc(r.prev.overall_result||'—')+'</b> · '+(r.prev.confidence!=null?r.prev.confidence+'%':'—')+' · '+esc(pd)+'</div>';
+  }
   var DOM_META={
     perclos:{e:'👁️',n:'Alertness (PERCLOS)'},
     pursuit:{e:'🔵',n:'Smooth Pursuit'},
@@ -2809,6 +2870,7 @@ function showResults(){
     npc:{e:'🎯',n:'Convergence (NPC)'},
     okn:{e:'🦓',n:'Optokinetic (OKN)'},
     hints:{e:'🌀',n:'Vestibular (HINTS)'},
+    plr:{e:'💡',n:'Pupil Light Reflex (beta)'},
     rt:{e:'⏱️',n:'Reaction Time'},
     cn7:{e:'😀',n:'Facial Symmetry (CN VII)'},
     cn5:{e:'😮',n:'Jaw Motor (CN V)'},
@@ -2857,6 +2919,16 @@ function exportReport(){
   document.body.appendChild(a); a.click(); a.remove();
 }
 
+function esc(s){return String(s==null?'':s).replace(/[&<>"]/g,function(c){return({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'})[c];});}
+// Longitudinal (beta): most recent prior exam of the same mode (fetched before the current save).
+async function fetchPrevExam(mode){
+  if(!sb)return null;
+  try{
+    var res=await sb.from('exams').select('overall_result,confidence,created_at').eq('exam_mode',mode).order('created_at',{ascending:false}).limit(1);
+    if(res.error||!res.data||!res.data.length)return null;
+    return res.data[0];
+  }catch(e){ return null; }
+}
 async function saveExamToSupabase(result) {
   if(!sb){ console.warn('[CC] No Supabase client — skipping save (exam still ran).'); return; }
   try {
