@@ -516,8 +516,8 @@ function resetDiagForExam(){
 // type: 'hold' = capture window, 'pursuit'/'saccade' = animated dot task. showDot = fixed center target.
 var TRIAGE_STEPS=[
   {id:'calib',   type:'hold',    emoji:'🎯', name:'Calibrating',   bannerSub:'Hold still — getting baseline',  title:'Hold still and look at the camera',                       sub:'Baseline calibration',                 dur:1800},
-  {id:'perclos', type:'hold',    emoji:'👁️', name:'Alertness',     bannerSub:'Eyes open, blink normally',      title:'Look at the camera — eyes open, blink normally',          sub:'Step 1 of 6 · Alertness (PERCLOS)',    dur:10000, showDot:true},
-  {id:'pursuit', type:'pursuit', emoji:'🔵', name:'Eye Tracking',  bannerSub:'Follow the dot — head still',    title:'Follow the moving dot with your eyes — keep your head still', sub:'Step 2 of 6 · Smooth pursuit',      dur:15000},
+  {id:'perclos', type:'hold',    emoji:'👁️', name:'Alertness',     bannerSub:'Eyes open, blink normally',      title:'Look at the camera — eyes open, blink normally',          sub:'Step 1 of 6 · Alertness (PERCLOS)',    dur:8000, showDot:true},
+  {id:'pursuit', type:'pursuit', emoji:'🔵', name:'Eye Tracking',  bannerSub:'Follow the dot — head still',    title:'Follow the dot with your eyes — head still', sub:'Step 2 of 6 · Smooth pursuit',      dur:10000},
   {id:'saccades',type:'saccade', emoji:'⚡', name:'Quick Looks',   bannerSub:'Snap your eyes to each dot',      title:'Snap your eyes to each dot as fast as you can',           sub:'Step 3 of 6 · Horizontal saccades',    dur:10000},
   {id:'cn7',     type:'hold',    emoji:'😀', name:'Smile & Brows', bannerSub:'Smile, then raise eyebrows',     title:'Smile big — then raise your eyebrows high',               sub:'Step 4 of 6 · Facial symmetry (CN VII)',dur:10000},
   {id:'tongue',  type:'hold',    emoji:'👅', name:'Tongue Out',    bannerSub:'Tongue straight out, hold it',   title:'Stick your tongue straight out and hold it',             sub:'Step 5 of 6 · Tongue (CN XII)',        dur:5000},
@@ -605,7 +605,7 @@ function speak(text){
   window.speechSynthesis.cancel();
   var u=new SpeechSynthesisUtterance(text);
   if(femaleVoice)u.voice=femaleVoice;
-  u.rate=0.72; u.pitch=1.0; u.volume=1;
+  u.rate=0.9; u.pitch=1.0; u.volume=1;
   window.speechSynthesis.speak(u);
 }
 
@@ -616,7 +616,7 @@ function speakAndWait(text){
     window.speechSynthesis.cancel();
     var u=new SpeechSynthesisUtterance(text);
     if(femaleVoice)u.voice=femaleVoice;
-    u.rate=0.72; u.pitch=1.0; u.volume=1;
+    u.rate=0.9; u.pitch=1.0; u.volume=1;
     u.onerror=function(){resolve();};
     window.speechSynthesis.speak(u);
     // Fallback if onend never fires (iOS bug)
@@ -821,7 +821,7 @@ async function initCamera(){
   document.getElementById('startScreen').style.display='none';
   document.getElementById('camInfo').style.display='flex';
   document.getElementById('statusBanner').style.display='block';
-  document.getElementById('scoresPanel').style.display='block';
+  // (legacy live-scores panel intentionally left hidden — superseded by the step prompts + diagnostic pill)
   cameraActive=true;
   sizeMeshCanvas();
   positionOverlays();
@@ -830,8 +830,7 @@ async function initCamera(){
   await loadFaceLandmarker();
   startRenderLoop();
   // Brief warm-up so the first frames flow, then start the exam.
-  await new Promise(function(r){setTimeout(r,1200);});
-  await speakAndWait('Camera ready. Starting triage screening.');
+  await new Promise(function(r){setTimeout(r,800);});
   startExam();
 }
 
@@ -2343,7 +2342,7 @@ async function startExam(){
   document.getElementById('cnPrompt').style.display='flex';
 
   setStatus('TRIAGE Screen','6 quick steps — about 90 seconds');
-  await speakAndWait('Starting triage screening. Follow the on-screen prompts.');
+  await speakAndWait('Center your face in the frame and follow the on-screen prompts.');
 
   // ── Hard stop if the AI model never loaded ──
   // Don't run a pointless 65-second exam; save a complete diagnostic row and tell the user honestly.
@@ -2364,17 +2363,16 @@ async function startExam(){
   }
 
   // Wait for face lock — voice stays continuous so the user is never staring at a silent screen
-  setStatus('Detecting face...','Center your face in the frame');
-  await speakAndWait('Looking for your face. Please center your face in the frame.');
+  setStatus('Detecting face…','Hold steady');
   var fw=0;
   while(fw<150&&BUF.iris.length<20){
     await w(100); fw++;
-    if(fw===50&&BUF.iris.length<20)await speakAndWait('Still looking. Make sure your face is well lit and centered.');
+    if(fw===60&&BUF.iris.length<20)await speakAndWait('Make sure your face is well lit and centered.');
   }
   if(BUF.iris.length>=20){
-    await speakAndWait('Face detected. Beginning the screen.');
+    await speakAndWait('Got it. Beginning now.');
   }else{
-    await speakAndWait('I could not get a clear lock on your face. Continuing anyway — results may be limited.');
+    await speakAndWait('Continuing — results may be limited.');
   }
   TRIAGE.lightingScore=sampleLighting(document.getElementById('webcam'));
 
