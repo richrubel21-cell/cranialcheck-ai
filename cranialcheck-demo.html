@@ -52,6 +52,8 @@ body{font-family:var(--f);background:#000;-webkit-font-smoothing:antialiased}
 .t-right{display:flex;align-items:center;gap:8px}
 .live-pill{display:flex;align-items:center;gap:5px;background:var(--greenL);border:1px solid rgba(22,163,74,.2);padding:4px 10px;border-radius:20px;font-size:11px;font-weight:700;color:var(--green);font-family:var(--m)}
 .live-dot{width:6px;height:6px;border-radius:50%;background:var(--green);animation:pulse 1.5s infinite}
+.live-pill.rec{background:rgba(220,38,38,.12);border-color:rgba(220,38,38,.35);color:#DC2626}   /* RED while capturing */
+.live-pill.rec .live-dot{background:#DC2626}
 
 /* ── MODE BAR ── */
 .mode-bar{display:flex;flex-wrap:wrap;justify-content:center;align-items:flex-start;gap:6px 6px;row-gap:10px;padding:8px 12px 18px;border-top:1px solid var(--border);background:var(--surface2)}
@@ -2871,9 +2873,12 @@ async function startExam(mode){
   document.getElementById('replayBtn').style.display='none';
   document.getElementById('statusBanner').className='status-banner';
   document.getElementById('cnPrompt').style.display='flex';
-  var _tb=document.querySelector('.topbar'), _cp=document.getElementById('cnPrompt');   // clean capture screen
-  if(_tb)_tb.style.display='none';                 // hide header + buttons during capture (camera only)
-  if(_cp)_cp.style.top='0px';                       // instruction strip at the very top of the screen
+  // Capture screen: keep the header (with the RED "● LIVE" recording indicator), hide only the mode
+  // buttons, and pin the instruction strip right under the header.
+  var _mb=document.querySelector('.mode-bar'); if(_mb)_mb.style.display='none';
+  var _lp=document.querySelector('.live-pill'); if(_lp)_lp.classList.add('rec');
+  var _tb=document.querySelector('.topbar'), _cp=document.getElementById('cnPrompt');
+  if(_tb&&_cp)_cp.style.top=_tb.offsetHeight+'px';
 
   setStatus(mode+' Screen',(STEPS.length-1)+' steps');
   await speakAndWait('Center your face in the frame and follow the on-screen prompts.');
@@ -3030,7 +3035,7 @@ function showResults(){
 function hideResults(){
   var el=document.getElementById('results');
   if(el)el.classList.remove('show');
-  if(!examRunning){ var tb=document.querySelector('.topbar'); if(tb)tb.style.display=''; var mb=document.querySelector('.mode-bar'); if(mb)mb.style.display=''; }  // restore header + mode buttons on the idle live view
+  if(!examRunning){ var mb=document.querySelector('.mode-bar'); if(mb)mb.style.display=''; var lp=document.querySelector('.live-pill'); if(lp)lp.classList.remove('rec'); }  // restore buttons + green LIVE on the idle live view
 }
 function exportReport(){
   var r=TRIAGE.result; if(!r)return;
