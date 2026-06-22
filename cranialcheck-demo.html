@@ -304,8 +304,16 @@ body{font-family:var(--f);background:#000;-webkit-font-smoothing:antialiased}
     </div>
     <div class="mode-bar">
       <div class="mode-wrap">
-        <button class="mode-btn on" onclick="startExam()">▶ TRIAGE</button>
+        <button class="mode-btn on" id="modeTRIAGE" onclick="startExam('TRIAGE')">▶ TRIAGE</button>
         <div class="mode-lbl">90-sec screen</div>
+      </div>
+      <div class="mode-wrap">
+        <button class="mode-btn" id="modeACUTE" onclick="startExam('ACUTE')">▶ ACUTE</button>
+        <div class="mode-lbl">+ DDK speech</div>
+      </div>
+      <div class="mode-wrap">
+        <button class="mode-btn" id="modeEXTENDED" onclick="startExam('EXTENDED')">▶ EXTENDED</button>
+        <div class="mode-lbl">+ full speech</div>
       </div>
       <div class="mode-wrap">
         <button class="mode-btn" onclick="switchCamera()">🔄 Camera</button>
@@ -511,18 +519,45 @@ function resetDiagForExam(){
   DIAG.errors=[];
 }
 
-// Field-grade 90-sec TBI screen (MACE2 / VOMS / BE-FAST aligned). Six distinct steps, two with
-// animated on-screen targets (pursuit + saccades). 'calib' is an internal baseline, not numbered.
-// type: 'hold' = capture window, 'pursuit'/'saccade' = animated dot task. showDot = fixed center target.
-var TRIAGE_STEPS=[
-  {id:'calib',   type:'hold',    emoji:'🎯', name:'Calibrating',   bannerSub:'Hold still — getting baseline',  title:'Hold still and look at the camera',                       sub:'Baseline calibration',                 dur:1800},
-  {id:'perclos', type:'hold',    emoji:'👁️', name:'Alertness',     bannerSub:'Eyes open, blink normally',      title:'Look at the camera — eyes open, blink normally',          sub:'Step 1 of 6 · Alertness (PERCLOS)',    dur:8000, showDot:true},
-  {id:'pursuit', type:'pursuit', emoji:'🔵', name:'Eye Tracking',  bannerSub:'Follow the dot — head still',    title:'Follow the dot with your eyes — head still', sub:'Step 2 of 6 · Smooth pursuit',      dur:10000},
-  {id:'saccades',type:'saccade', emoji:'⚡', name:'Quick Looks',   bannerSub:'Snap your eyes to each dot',      title:'Snap your eyes to each dot as fast as you can',           sub:'Step 3 of 6 · Horizontal saccades',    dur:10000},
-  {id:'cn7',     type:'hold',    emoji:'😀', name:'Smile & Brows', bannerSub:'Smile, then raise eyebrows',     title:'Smile big — then raise your eyebrows high',               sub:'Step 4 of 6 · Facial symmetry (CN VII)',dur:5000},
-  {id:'tongue',  type:'hold',    emoji:'👅', name:'Tongue Out',    bannerSub:'Tongue straight out, hold it',   title:'Stick your tongue straight out and hold it',             sub:'Step 5 of 6 · Tongue (CN XII)',        dur:5000},
-  {id:'head',    type:'hold',    emoji:'🧭', name:'Head Steady',   bannerSub:'Head still, eyes on the dot',    title:'Hold your head perfectly still and stare at the dot',     sub:'Step 6 of 6 · Head stability',         dur:10000, showDot:true}
-];
+// ── EXAM STEP LIBRARY ── each test defined once, composed into tiered mode sequences (spec §25).
+// type: 'hold' = capture window · 'pursuit'/'saccade' = animated dot · 'speech' = mic phrase.
+// showDot = fixed center target. 'calib' = internal baseline (not numbered). sub = base label;
+// seq() prefixes the live "Step N of M" so numbering is correct in every mode.
+var STEP={
+  calib:   {id:'calib',   type:'hold',    emoji:'🎯', name:'Calibrating',   bannerSub:'Hold still — getting baseline', title:'Hold still and look at the camera',                   sub:'Baseline calibration',     dur:1800},
+  perclos: {id:'perclos', type:'hold',    emoji:'👁️', name:'Alertness',     bannerSub:'Eyes open, blink normally',     title:'Look at the camera — eyes open, blink normally',      sub:'Alertness (PERCLOS)',      dur:8000, showDot:true},
+  pursuit: {id:'pursuit', type:'pursuit', emoji:'🔵', name:'Eye Tracking',  bannerSub:'Follow the dot — head still',   title:'Follow the dot with your eyes — head still',          sub:'Smooth pursuit',           dur:10000},
+  saccades:{id:'saccades',type:'saccade', emoji:'⚡', name:'Quick Looks',   bannerSub:'Snap your eyes to each dot',     title:'Snap your eyes to each dot as fast as you can',       sub:'Horizontal saccades',      dur:10000},
+  cn7:     {id:'cn7',     type:'hold',    emoji:'😀', name:'Smile & Brows', bannerSub:'Smile, then raise eyebrows',    title:'Smile big — then raise your eyebrows high',           sub:'Facial symmetry (CN VII)', dur:5000},
+  tongue:  {id:'tongue',  type:'hold',    emoji:'👅', name:'Tongue Out',    bannerSub:'Tongue straight out, hold it',  title:'Stick your tongue straight out and hold it',         sub:'Tongue (CN XII)',          dur:5000},
+  head:    {id:'head',    type:'hold',    emoji:'🧭', name:'Head Steady',   bannerSub:'Head still, eyes on the dot',   title:'Hold your head perfectly still and stare at the dot', sub:'Head stability',           dur:10000, showDot:true},
+  // speech (mic, Web Speech API) — phrases defined in SPEECH_TESTS, referenced by speechId
+  ddk:     {id:'ddk',    type:'speech', speechId:'motor',        emoji:'⚡', name:'Rapid Syllables', bannerSub:'Say pa-ta-ka, fast',        title:'Say "pa-ta-ka" over and over, fast as you can',          sub:'Speech — DDK rate'},
+  spBase:  {id:'spBase', type:'speech', speechId:'baseline',     emoji:'🗣️', name:'Speech',          bannerSub:'Repeat the phrase',         title:'Repeat: "The sky is blue and the grass is green"',       sub:'Speech — clarity & rate'},
+  spArtic: {id:'spArtic',type:'speech', speechId:'articulation', emoji:'👅', name:'Articulation',    bannerSub:'Repeat the tongue-twister', title:'Repeat: "Peter Piper picked a peck of pickled peppers"', sub:'Speech — articulation'},
+  spNat:   {id:'spNat',  type:'speech', speechId:'natural',      emoji:'🎵', name:'Natural Speech',  bannerSub:'Repeat the phrase',         title:'Repeat: "I like piña coladas and dancing in the rain"',  sub:'Speech — natural'}
+};
+function seq(){
+  var ids=[].slice.call(arguments);
+  var total=ids.filter(function(id){return id!=='calib';}).length, n=0;
+  return ids.map(function(id){
+    var s={},base=STEP[id]; for(var k in base) s[k]=base[k];
+    if(id!=='calib'){ n++; s.sub='Step '+n+' of '+total+' · '+base.sub; }
+    return s;
+  });
+}
+// Tiered modes (spec §25). ACUTE adds DDK speech; EXTENDED adds the full speech battery.
+// (antisaccade / NPC / OKN / CN V·IX·X·XI come in later phases.)
+var TRIAGE_STEPS   = seq('calib','perclos','pursuit','saccades','cn7','tongue','head');
+var ACUTE_STEPS    = seq('calib','perclos','pursuit','saccades','cn7','tongue','head','ddk');
+var EXTENDED_STEPS = seq('calib','perclos','pursuit','saccades','cn7','tongue','head','spBase','spArtic','ddk','spNat');
+var MODE_STEPS     = {TRIAGE:TRIAGE_STEPS, ACUTE:ACUTE_STEPS, EXTENDED:EXTENDED_STEPS};
+var lastMode='TRIAGE';
+function highlightMode(mode){
+  ['TRIAGE','ACUTE','EXTENDED'].forEach(function(m){
+    var b=document.getElementById('mode'+m); if(b)b.className='mode-btn'+(m===mode?' on':'');
+  });
+}
 
 // ── ASSESSMENT DATA ──
 var DATA={
@@ -1854,7 +1889,7 @@ function resetExam(){
     var el=document.getElementById(id);
     if(el){el.textContent='—';el.className='score-val pending';}
   });
-  if(cameraActive)startExam();
+  if(cameraActive)startExam(lastMode);
 }
 
 function w(ms){return new Promise(function(r){setTimeout(r,ms);});}
@@ -2442,13 +2477,54 @@ function scoreSaccade(frames){
   return{score:s, value:Math.round(acc*100), label:label, flag:flag, metric:'direction accuracy '+Math.round(acc*100)+'%'};
 }
 
+// ── SPEECH STEP (mic, Web Speech API) ── reuses SPEECH_TESTS / runSpeechTest / scoreDDK / scoreSpeech.
+async function speechStep(step){
+  var st=null,i; for(i=0;i<SPEECH_TESTS.length;i++){ if(SPEECH_TESTS[i].id===step.speechId){st=SPEECH_TESTS[i];break;} }
+  if(!st) return {id:step.speechId, label:step.name, res:{error:'no test',score:0,label:'No test',flag:'warn'}};
+  document.getElementById('cnEmoji').textContent=step.emoji;
+  document.getElementById('cnPromptTitle').textContent=step.title;
+  document.getElementById('cnPromptSub').textContent=step.sub;
+  setStatus(step.name, st.label);
+  await speakAndWait('Repeat after me. '+st.speak);            // read the phrase
+  if(window.speechSynthesis)window.speechSynthesis.cancel();   // stop TTS before opening the mic
+  await w(350);
+  document.getElementById('cnPromptSub').textContent='🎤 Listening — say it now';
+  var fill=document.getElementById('cnProgressFill'); fill.style.transition='none'; fill.style.width='0%'; void fill.offsetWidth;
+  fill.style.transition='width 12s linear'; setTimeout(function(){fill.style.width='100%';},30);
+  var r=await runSpeechTest();
+  fill.style.transition='width 3s linear';
+  var res;
+  if(r&&r.error){ res={error:r.error, score:0, label:'No response', flag:'warn', transcript:'', duration:0}; }
+  else if(st.isDDK){ res=scoreDDK(r.duration, r.transcript||''); res.transcript=r.transcript; res.duration=r.duration; }
+  else { var acc=Math.max(0,1-wordErrorRate(st.phrase, r.transcript||'')); res=scoreSpeech(st.words/(Math.max(r.duration,0.5)/60), acc, null); res.transcript=r.transcript; res.duration=r.duration; }
+  DIAG[step.id+'_frames']=res.error?0:1;
+  if(!res.error)TRIAGE.stepsComplete++;
+  return {id:st.id, label:st.label, res:res};
+}
+// Consolidate the speech battery into ONE 'speech' domain (composite score + headline metrics).
+function consolidateSpeech(acc){
+  if(!acc.length) return null;
+  var valid=acc.filter(function(a){return a.res && !a.res.error && a.res.score>0;});
+  if(!valid.length) return {score:0,label:'No speech captured',flag:'warn',metric:'no response — check mic / browser support'};
+  var avg=valid.reduce(function(s,a){return s+a.res.score;},0)/valid.length;
+  var flag=avg>=0.85?'good':avg>=0.70?'warn':'bad';
+  var label=avg>=0.85?'Speech normal':avg>=0.70?'Possible mild dysarthria':'Possible dysarthria';
+  var base=null,ddk=null,parts=[]; acc.forEach(function(a){if(a.id==='baseline')base=a; if(a.id==='motor')ddk=a;});
+  if(base&&base.res&&base.res.wpm)parts.push(base.res.wpm+' WPM');
+  if(ddk&&ddk.res&&ddk.res.sps)parts.push(ddk.res.sps+' syl/s');
+  parts.push(valid.length+'/'+acc.length+' phrases');
+  return {score:avg, value:Math.round(avg*100), label:label, flag:flag, metric:parts.join(' · ')};
+}
+
 // ── TRIAGE exam runner ──
-async function startExam(){
+async function startExam(mode){
   if(examRunning||!cameraActive)return;
+  mode=mode||lastMode||'TRIAGE'; lastMode=mode; highlightMode(mode);
+  var STEPS=MODE_STEPS[mode]||TRIAGE_STEPS;
   examRunning=true;
   TRIAGE.active=true; TRIAGE.result=null;
   TRIAGE.capturedFrames=0; TRIAGE.expectedFrames=0; TRIAGE.stepsComplete=0; TRIAGE.calibStability=0; TRIAGE.lightingScore=0;
-  TRIAGE.startMs=performance.now(); TRIAGE.renderFrames=0; TRIAGE.totalSteps=TRIAGE_STEPS.length;
+  TRIAGE.startMs=performance.now(); TRIAGE.renderFrames=0; TRIAGE.totalSteps=STEPS.length;
   resetDiagForExam();
   if(!DIAG.model_loaded)diagError('model not loaded at exam start (delegate='+DIAG.model_delegate+')');
   hideResults();
@@ -2458,7 +2534,7 @@ async function startExam(){
   document.getElementById('statusBanner').className='status-banner';
   document.getElementById('cnPrompt').style.display='flex';
 
-  setStatus('TRIAGE Screen','6 quick steps — about 90 seconds');
+  setStatus(mode+' Screen',(STEPS.length-1)+' steps');
   await speakAndWait('Center your face in the frame and follow the on-screen prompts.');
 
   // ── Hard stop if the AI model never loaded ──
@@ -2470,7 +2546,7 @@ async function startExam(){
     var ovf=computeTriageOverall(Rf);
     ovf.examDurationSec=Math.round((performance.now()-TRIAGE.startMs)/100)/10;
     ovf.avgFps=0;
-    TRIAGE.result={domains:Rf, overall:ovf};
+    TRIAGE.result={domains:Rf, overall:ovf, mode:mode};
     saveExamToSupabase(TRIAGE.result);            // failed run is still recorded for the admin
     setStatus('AI model failed to load','Reload the page to retry — check your connection');
     document.getElementById('statusBanner').className='status-banner';
@@ -2500,13 +2576,15 @@ async function startExam(){
   // Run each step in order. calib runs first (sets baselines incl. baseSpread); pursuit/saccade
   // use the animated dot engine, the rest are capture-window 'hold' steps.
   var HOLD={calib:scoreCalib,perclos:scorePerclos,cn7:scoreCN7,tongue:scoreTongue,head:scoreHead};
-  var R={};
-  for(var si=0;si<TRIAGE_STEPS.length;si++){
-    var st=TRIAGE_STEPS[si];
+  var R={}, SPEECHACC=[];
+  for(var si=0;si<STEPS.length;si++){
+    var st=STEPS[si];
     if(st.type==='pursuit'){ R[st.id]=scorePursuit(await dotStep(st)); }
     else if(st.type==='saccade'){ R[st.id]=scoreSaccade(await dotStep(st)); }
+    else if(st.type==='speech'){ try{ SPEECHACC.push(await speechStep(st)); }catch(e){ SPEECHACC.push({id:st.speechId,label:st.name,res:{error:'speech error',score:0,label:'No response',flag:'warn'}}); if(TRIAGE.active)diagError('speech: '+(e&&e.message)); } }
     else { var fr=await triageStep(st); var fn=HOLD[st.id]; if(fn)R[st.id]=fn(fr); }
   }
+  if(SPEECHACC.length){ var spd=consolidateSpeech(SPEECHACC); if(spd)R.speech=spd; }
 
   document.getElementById('cnPrompt').style.display='none';
   TRIAGE.active=false; examRunning=false;
@@ -2515,14 +2593,14 @@ async function startExam(){
   var durSec=(performance.now()-TRIAGE.startMs)/1000;
   overall.examDurationSec=Math.round(durSec*10)/10;
   overall.avgFps=durSec>0?Math.round(TRIAGE.renderFrames/durSec):0;
-  TRIAGE.result={domains:R, overall:overall};
+  TRIAGE.result={domains:R, overall:overall, mode:mode};
   saveExamToSupabase(TRIAGE.result);
 
-  setStatus('✓ TRIAGE Complete', overall.label+' — results ready');
+  setStatus('✓ '+mode+' Complete', overall.label+' — results ready');
   document.getElementById('statusBanner').className='status-banner complete';
   positionOverlays();
 
-  await speakAndWait('Triage complete. '+overall.speak);
+  await speakAndWait(mode+' screen complete. '+overall.speak);
   showResults();
 }
 
@@ -2539,7 +2617,7 @@ function showResults(){
       +'<div class="res-dom-flag '+fl+'">'+ft+'</div></div>';
   }
   var h='';
-  h+='<div class="res-head"><div class="res-head-title">TRIAGE Results</div><button class="res-close" onclick="hideResults()">×</button></div>';
+  h+='<div class="res-head"><div class="res-head-title">'+(r.mode||'TRIAGE')+' Results</div><button class="res-close" onclick="hideResults()">×</button></div>';
   h+='<div class="res-status '+o.cls+'"><div class="res-status-icon">'+o.icon+'</div>'
     +'<div class="res-status-label">'+o.label+'</div>'
     +'<div class="res-status-txt">'+o.txt+'</div>'
@@ -2550,7 +2628,8 @@ function showResults(){
     saccades:{e:'⚡',n:'Horizontal Saccades'},
     cn7:{e:'😀',n:'Facial Symmetry (CN VII)'},
     tongue:{e:'👅',n:'Tongue (CN XII)'},
-    head:{e:'🧭',n:'Head Stability'}
+    head:{e:'🧭',n:'Head Stability'},
+    speech:{e:'🗣️',n:'Speech (CN VII/X/XII)'}
   };
   var domsHtml='';
   Object.keys(d).forEach(function(k){ if(k==='calib')return; var m=DOM_META[k]; if(!m||!d[k])return; domsHtml+=domCard(m.e,m.n,d[k]); });
