@@ -519,7 +519,7 @@ var TRIAGE_STEPS=[
   {id:'perclos', type:'hold',    emoji:'👁️', name:'Alertness',     bannerSub:'Eyes open, blink normally',      title:'Look at the camera — eyes open, blink normally',          sub:'Step 1 of 6 · Alertness (PERCLOS)',    dur:8000, showDot:true},
   {id:'pursuit', type:'pursuit', emoji:'🔵', name:'Eye Tracking',  bannerSub:'Follow the dot — head still',    title:'Follow the dot with your eyes — head still', sub:'Step 2 of 6 · Smooth pursuit',      dur:10000},
   {id:'saccades',type:'saccade', emoji:'⚡', name:'Quick Looks',   bannerSub:'Snap your eyes to each dot',      title:'Snap your eyes to each dot as fast as you can',           sub:'Step 3 of 6 · Horizontal saccades',    dur:10000},
-  {id:'cn7',     type:'hold',    emoji:'😀', name:'Smile & Brows', bannerSub:'Smile, then raise eyebrows',     title:'Smile big — then raise your eyebrows high',               sub:'Step 4 of 6 · Facial symmetry (CN VII)',dur:10000},
+  {id:'cn7',     type:'hold',    emoji:'😀', name:'Smile & Brows', bannerSub:'Smile, then raise eyebrows',     title:'Smile big — then raise your eyebrows high',               sub:'Step 4 of 6 · Facial symmetry (CN VII)',dur:5000},
   {id:'tongue',  type:'hold',    emoji:'👅', name:'Tongue Out',    bannerSub:'Tongue straight out, hold it',   title:'Stick your tongue straight out and hold it',             sub:'Step 5 of 6 · Tongue (CN XII)',        dur:5000},
   {id:'head',    type:'hold',    emoji:'🧭', name:'Head Steady',   bannerSub:'Head still, eyes on the dot',    title:'Hold your head perfectly still and stare at the dot',     sub:'Step 6 of 6 · Head stability',         dur:10000, showDot:true}
 ];
@@ -2242,20 +2242,29 @@ function computeConfidence(R){
 // Overall: URGENT if any red flag fires, FLAG if 2+ borderline, WATCH if 1 borderline, else NORMAL.
 function computeTriageOverall(R){
   // All clinical domains except the internal calibration step.
-  var doms=Object.keys(R).filter(function(k){return k!=='calib';}).map(function(k){return R[k];});
+  // ROBUST domains (camera-reliable) drive URGENT/FLAG. OCULOMOTOR (pursuit/saccades) is gaze-based
+  // and uncalibrated, so it can raise at most WATCH — it can never alone trigger URGENT.
+  var ROBUST={perclos:1,cn7:1,gcs:1,tongue:1,head:1};
+  var keys=Object.keys(R).filter(function(k){return k!=='calib';});
+  var doms=keys.map(function(k){return R[k];});
   var valid=doms.filter(function(d){return d.label!=='No data';}).length;
-  var bad=doms.filter(function(d){return d.flag==='bad';}).length;
+  var robustBad=0,robustWarn=0,oculoFlag=0;
+  keys.forEach(function(k){
+    var d=R[k]; if(!d||d.label==='No data')return;
+    if(ROBUST[k]){ if(d.flag==='bad')robustBad++; else if(d.flag==='warn')robustWarn++; }
+    else if(d.flag==='bad'||d.flag==='warn'){ oculoFlag++; }
+  });
+  var bad=doms.filter(function(d){return d.flag==='bad';}).length;   // for reporting/admin
   var warn=doms.filter(function(d){return d.flag==='warn';}).length;
   var status,label,cls,icon,txt,speak;
   if(valid===0){
-    // No domain captured usable data — a technical failure, NOT a clinical flag.
     status='INVALID';label='INCOMPLETE';cls='s-invalid';icon='⚠️';
     txt='Screening could not be completed — no usable data was captured. Check the camera, lighting, and connection, then run again.';
     speak='Screening could not be completed. No usable data was captured.';
   }
-  else if(bad>=1){status='URGENT';label='URGENT';cls='s-urgent';icon='🚑';txt='A red-flag domain fired on screening. Prompt clinical evaluation is recommended.';speak='A red flag fired. Prompt clinical evaluation is recommended.';}
-  else if(warn>=2){status='FLAG';label='FLAG';cls='s-flag';icon='🚩';txt='Two or more domains were borderline. Clinical correlation is advised.';speak='Two or more findings were borderline. Clinical correlation is advised.';}
-  else if(warn===1){status='WATCH';label='WATCH';cls='s-watch';icon='👁️';txt='One borderline finding. Consider monitoring or re-screening.';speak='One borderline finding. Consider monitoring or re-screening.';}
+  else if(robustBad>=1){status='URGENT';label='URGENT';cls='s-urgent';icon='🚑';txt='A red-flag domain fired on screening. Prompt clinical evaluation is recommended.';speak='A red flag fired. Prompt clinical evaluation is recommended.';}
+  else if(robustWarn>=2){status='FLAG';label='FLAG';cls='s-flag';icon='🚩';txt='Two or more domains were borderline. Clinical correlation is advised.';speak='Two or more findings were borderline. Clinical correlation is advised.';}
+  else if(robustWarn===1||oculoFlag>=1){status='WATCH';label='WATCH';cls='s-watch';icon='👁️';txt='One borderline finding. Consider monitoring or re-screening.';speak='One borderline finding. Consider monitoring or re-screening.';}
   else{status='NORMAL';label='NORMAL';cls='s-normal';icon='✅';txt='No significant findings on this zero-hardware screen.';speak='No significant findings on this screen.';}
   var cc=computeConfidence(R);
   return{status:status,label:label,cls:cls,icon:icon,txt:txt,speak:speak,
@@ -2327,8 +2336,9 @@ function scorePursuit(frames){
   var ch=Math.abs(corr(frames.map(function(f){return f.gx;}),frames.map(function(f){return f.tx;})));
   var cv=Math.abs(corr(frames.map(function(f){return f.gy;}),frames.map(function(f){return f.ty;})));
   var s=clamp(Math.max(ch, ch*0.6+cv*0.4),0,1);
-  var flag=s>=0.6?'good':s>=0.4?'warn':'bad';
-  var label=s>=0.6?'Smooth pursuit intact':s>=0.4?'Pursuit partially tracked':'Pursuit poorly tracked';
+  // Uncalibrated iris-gaze caps at WATCH (never red) — the 5-point gaze calibration unlocks reliable 'good'.
+  var flag=s>=0.5?'good':'warn';
+  var label=s>=0.5?'Smooth pursuit tracked':'Pursuit limited — calibrate for accuracy';
   return{score:s, value:Math.round(s*100), label:label, flag:flag, metric:'eye–target sync '+Math.round(s*100)+'%'};
 }
 // Saccades — does gaze jump in the correct direction toward each target? Sign-robust (mirror-safe).
@@ -2343,8 +2353,9 @@ function scoreSaccade(frames){
   var amp=Math.max.apply(null,gxs)-Math.min.apply(null,gxs);
   var moved=amp>0.04;
   var s=moved?clamp(acc,0,1):0.3;
-  var flag=(moved&&acc>=0.7)?'good':(moved&&acc>=0.5)?'warn':'bad';
-  var label=!moved?'Minimal eye movement':acc>=0.7?'Saccades on target':acc>=0.5?'Some saccade errors':'Saccades inaccurate';
+  // Uncalibrated — caps at WATCH (never red) until 5-point gaze calibration is in place.
+  var flag=(moved&&acc>=0.6)?'good':'warn';
+  var label=!moved?'Minimal eye movement':acc>=0.6?'Saccades on target':'Saccades — calibrate for accuracy';
   return{score:s, value:Math.round(acc*100), label:label, flag:flag, metric:'direction accuracy '+Math.round(acc*100)+'%'};
 }
 
