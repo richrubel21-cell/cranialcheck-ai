@@ -542,7 +542,11 @@ var STEP={
   cn11:    {id:'cn11',  type:'hold', emoji:'↔️', name:'Head Turn',   bannerSub:'Turn head left, then right', title:'Slowly turn your head fully left, then fully right',   sub:'Head rotation (CN XI)',     dur:6000},
   // oculomotor extras
   antisac: {id:'antisac', type:'antisaccade', emoji:'🔀', name:'Look Away', bannerSub:'Look OPPOSITE the dot',     title:'When the dot appears, look to the OPPOSITE side — away from it', sub:'Antisaccades (mTBI marker)',  dur:8000},
-  npc:     {id:'npc',     type:'npc',         emoji:'🎯', name:'Convergence', bannerSub:'Follow the dot as it nears', title:'Keep both eyes on the dot as it moves toward you',               sub:'Convergence (NPC proxy)',     dur:8000}
+  npc:     {id:'npc',     type:'npc',         emoji:'🎯', name:'Convergence', bannerSub:'Follow the dot as it nears', title:'Keep both eyes on the dot as it moves toward you',               sub:'Convergence (NPC proxy)',     dur:8000},
+  // extended battery
+  okn:     {id:'okn',   type:'okn',   emoji:'🦓', name:'Moving Stripes', bannerSub:'Watch the stripes',          title:'Watch the moving stripes — let your eyes follow them', sub:'Optokinetic nystagmus (OKN)', dur:12000},
+  hints:   {id:'hints', type:'hints', emoji:'🌀', name:'Vestibular',     bannerSub:'Stare at the dot, hold still', title:'Stare at the center dot and hold completely still',   sub:'HINTS — nystagmus + skew',    dur:7000, showDot:false},
+  rt:      {id:'rt',    type:'rt',    emoji:'⏱️', name:'Reaction Time',  bannerSub:'Tap when the dot turns green', title:'Tap the screen the instant the dot turns GREEN',      sub:'Reaction time',               dur:16000}
 };
 function seq(){
   var ids=[].slice.call(arguments);
@@ -557,7 +561,7 @@ function seq(){
 // (antisaccade / NPC / OKN / CN V·IX·X·XI come in later phases.)
 var TRIAGE_STEPS   = seq('calib','perclos','pursuit','saccades','cn7','tongue','head');
 var ACUTE_STEPS    = seq('calib','perclos','pursuit','saccades','antisac','npc','cn7','tongue','head','ddk');
-var EXTENDED_STEPS = seq('calib','perclos','pursuit','saccades','antisac','npc','cn7','cn5','cn910','tongue','cn11','head','spBase','spArtic','ddk','spNat');
+var EXTENDED_STEPS = seq('calib','perclos','pursuit','saccades','antisac','npc','okn','hints','cn7','cn5','cn910','tongue','cn11','head','rt','spBase','spArtic','ddk','spNat');
 var MODE_STEPS     = {TRIAGE:TRIAGE_STEPS, ACUTE:ACUTE_STEPS, EXTENDED:EXTENDED_STEPS};
 var lastMode='TRIAGE';
 function highlightMode(mode){
@@ -1505,6 +1509,7 @@ function startRenderLoop(){
               tx:(ATT.dotX-0.5)*0.6, ty:(ATT.dotY-0.5)*0.3,
               rawH:sg.h, rawV:sg.v, sx:ATT.dotX, sy:ATT.dotY,   // for 5-point gaze calibration
               irisGap:(features.irisL&&features.irisR&&features.IOD)?(dist(features.irisL,features.irisR)/features.IOD):null,  // for NPC convergence
+              skewV:(features.Ly-features.Ry),   // L vs R iris vertical offset — for HINTS skew
               blink:ATT.blinkInProgress, t:performance.now()
             });
           }
@@ -2432,6 +2437,8 @@ function runDotTask(mode,durMs){
         else      { x=0.5; y=topFrac+span*(0.5+0.45*Math.sin((ph-0.6)/0.4*Math.PI*2)); } // vertical up↔down
       }else if(mode==='npc'){
         x=0.5; y=topFrac+span*((el/2500)%1);   // far(top) → near(bottom), repeating ~2.5s (convergence proxy)
+      }else if(mode==='fix'){
+        x=0.5; y=midY;                          // static center target — fixation (HINTS nystagmus/skew)
       }else{ // saccade / antisaccade — jump between two fixed targets ~ every 1.1s
         x=(Math.floor(el/1100)%2)?0.82:0.18; y=midY;
       }
@@ -2452,7 +2459,7 @@ async function dotStep(step){
   fill.style.transition='none'; fill.style.width='0%'; void fill.offsetWidth;
   fill.style.transition='width '+step.dur+'ms linear';
   setTimeout(function(){fill.style.width='100%';},30);
-  var dm = step.type==='pursuit'?'pursuit' : (step.type==='npc'?'npc' : 'saccade');  // antisaccade reuses saccade motion
+  var dm = step.type==='pursuit'?'pursuit' : (step.type==='npc'?'npc' : (step.type==='hints'?'fix' : 'saccade'));  // antisaccade reuses saccade motion; hints = static fixation
   var frames=await runDotTask(dm, step.dur);
   fill.style.transition='width 3s linear';
   DIAG[step.id+'_frames']=frames.length;
@@ -2544,6 +2551,104 @@ function scoreNPC(frames){
   var flag=conv>=0.03?'good':conv>=0.012?'warn':'bad';
   var label=conv>=0.03?'Convergence intact':conv>=0.012?'Reduced convergence':'Poor convergence';
   return{score:s, value:Math.round(conv*1000)/1000, label:label, flag:flag, metric:'convergence '+(conv*100).toFixed(1)+'% IOD'};
+}
+
+// ── PHASE 5: OKN (optokinetic) + HINTS (vestibular) + reaction time ──
+var oknEl=null;
+function createOknEl(){
+  if(oknEl)return;
+  oknEl=document.createElement('div');
+  oknEl.style.cssText='position:fixed;inset:0;z-index:45;pointer-events:none;display:none;'
+    +'background:repeating-linear-gradient(90deg,#0b0b0b 0 7%,#e9e9e9 7% 14%);background-size:200% 100%;opacity:.93;';
+  document.body.appendChild(oknEl);
+}
+// OKN — full-screen stripes drift horizontally (alternating direction). Capture gaze via ATT path;
+// sx encodes the current stripe direction so scoreOKN can correlate gaze with stripe motion.
+function runOKN(durMs){
+  createOknEl(); createAttDot(); attDotEl&&(attDotEl.style.display='none');
+  oknEl.style.display='block';
+  ATT.active=true; ATT.frames=[];
+  var startT=performance.now(), W=window.innerWidth;
+  return new Promise(function(resolve){
+    function tick(){
+      var el=performance.now()-startT;
+      if(el>=durMs){ ATT.active=false; oknEl.style.display='none'; resolve(ATT.frames.slice()); return; }
+      var dir=(Math.floor(el/5000)%2)?-1:1;                 // flip direction every 5s
+      oknEl.style.backgroundPositionX=(dir*(el%5000)/1000*W*0.20)+'px';
+      ATT.dotX=dir>0?0.9:0.1; ATT.dotY=0.5;                 // encode stripe direction for scoreOKN
+      requestAnimationFrame(tick);
+    }
+    tick();
+  });
+}
+async function oknStep(step){
+  document.getElementById('cnEmoji').textContent=step.emoji;
+  document.getElementById('cnPromptTitle').textContent=step.title;
+  document.getElementById('cnPromptSub').textContent=step.sub;
+  setStatus(step.name, step.bannerSub);
+  await speakAndWait(step.title); await w(300);
+  var fill=document.getElementById('cnProgressFill'); fill.style.transition='none'; fill.style.width='0%'; void fill.offsetWidth;
+  fill.style.transition='width '+step.dur+'ms linear'; setTimeout(function(){fill.style.width='100%';},30);
+  var frames=await runOKN(step.dur); fill.style.transition='width 3s linear';
+  DIAG[step.id+'_frames']=frames.length; TRIAGE.capturedFrames+=frames.length; TRIAGE.expectedFrames+=Math.round(step.dur/33.3);
+  if(frames.length>=Math.max(10,step.dur/1000*3))TRIAGE.stepsComplete++;
+  return frames;
+}
+function scoreOKN(frames){
+  if(frames.length<10)return{score:0,label:'No data',flag:'warn',metric:'eyes not tracked'};
+  var c=Math.abs(corr(frames.map(function(f){return f.rawH;}),frames.map(function(f){return f.sx-0.5;})));
+  var s=clamp(c,0,1);
+  var flag=s>=0.4?'good':s>=0.2?'warn':'bad';
+  var label=s>=0.4?'OKN response present':s>=0.2?'Reduced OKN':'No OKN response';
+  return{score:s, value:Math.round(s*100), label:label, flag:flag, metric:'OKN response '+Math.round(s*100)+'%'};
+}
+// HINTS (camera-feasible parts): nystagmus = horizontal-gaze oscillation during fixation; skew =
+// vertical L/R iris misalignment. Head-impulse is not assessable by selfie camera (beta). Uses dotStep('fix').
+function scoreHINTS(frames){
+  if(frames.length<10)return{score:0,label:'No data',flag:'warn',metric:'eyes not tracked'};
+  var nys=stdDev(frames.map(function(f){return f.rawH;}));
+  var skew=mean(frames.map(function(f){return Math.abs(f.skewV||0);}));
+  var bad=(nys>0.06||skew>0.05), warn=(nys>0.03||skew>0.025);
+  var flag=bad?'bad':warn?'warn':'good';
+  var label=bad?'Nystagmus / skew flagged':warn?'Borderline':'No nystagmus or skew';
+  return{score:bad?0.2:warn?0.6:0.9, value:Math.round(nys*1000)/1000, label:label, flag:flag,
+    metric:'nystagmus SD '+nys.toFixed(3)+' · skew '+skew.toFixed(3)+' · head-impulse: beta'};
+}
+// Reaction time — dot turns green at a random delay; user taps. Measures mean latency over N trials.
+function runRT(durMs){
+  createAttDot();
+  return new Promise(function(resolve){
+    var trials=[], n=5, i=0, goTime=0, waiting=false, tmr=null, ended=false;
+    function setDot(col){ attDotEl.style.background='radial-gradient(circle,#fff 25%,'+col+' 100%)'; }
+    function nextTrial(){
+      if(ended)return;
+      attDotEl.style.display='block'; moveAttDot(0.5,0.46); setDot('rgba(220,38,38,0.95)'); waiting=false;
+      tmr=setTimeout(function(){ if(ended)return; setDot('rgba(22,163,74,0.98)'); goTime=performance.now(); waiting=true; }, 900+Math.random()*1600);
+    }
+    function onTap(){ if(ended||!waiting)return; trials.push(performance.now()-goTime); waiting=false; i++; if(i>=n)finish(); else { setDot('rgba(220,38,38,0.95)'); setTimeout(nextTrial,500); } }
+    function finish(){ if(ended)return; ended=true; clearTimeout(tmr); document.removeEventListener('pointerdown',onTap); if(attDotEl){attDotEl.style.display='none'; attDotEl.style.background='radial-gradient(circle,#fff 30%,rgba(30,136,229,0.9) 100%)';} resolve(trials); }
+    document.addEventListener('pointerdown',onTap);
+    nextTrial();
+    setTimeout(finish, durMs);
+  });
+}
+async function rtStep(step){
+  document.getElementById('cnEmoji').textContent=step.emoji;
+  document.getElementById('cnPromptTitle').textContent=step.title;
+  document.getElementById('cnPromptSub').textContent=step.sub;
+  setStatus(step.name, step.bannerSub);
+  await speakAndWait(step.title); await w(300);
+  var trials=await runRT(step.dur);
+  if(trials.length)TRIAGE.stepsComplete++;
+  DIAG[step.id+'_frames']=trials.length;
+  return trials;
+}
+function scoreRT(trials){
+  if(!trials||!trials.length)return{score:0,label:'No taps',flag:'warn',metric:'no response — tap the screen on green'};
+  var m=trials.reduce(function(a,b){return a+b;},0)/trials.length;
+  var flag=m<=350?'good':m<=500?'warn':'bad';
+  var label=m<=350?'Normal reaction time':m<=500?'Mildly slow':'Slowed reaction time';
+  return{score:clamp(1-(m-250)/400,0,1), value:Math.round(m), label:label, flag:flag, metric:Math.round(m)+'ms mean ('+trials.length+' trials)'};
 }
 
 // ── SPEECH STEP (mic, Web Speech API) ── reuses SPEECH_TESTS / runSpeechTest / scoreDDK / scoreSpeech.
@@ -2652,6 +2757,9 @@ async function startExam(mode){
     else if(st.type==='saccade'){ R[st.id]=scoreSaccade(await dotStep(st)); }
     else if(st.type==='antisaccade'){ R[st.id]=scoreAntisaccade(await dotStep(st)); }
     else if(st.type==='npc'){ R[st.id]=scoreNPC(await dotStep(st)); }
+    else if(st.type==='hints'){ R[st.id]=scoreHINTS(await dotStep(st)); }
+    else if(st.type==='okn'){ R[st.id]=scoreOKN(await oknStep(st)); }
+    else if(st.type==='rt'){ R[st.id]=scoreRT(await rtStep(st)); }
     else if(st.type==='speech'){ try{ SPEECHACC.push(await speechStep(st)); }catch(e){ SPEECHACC.push({id:st.speechId,label:st.name,res:{error:'speech error',score:0,label:'No response',flag:'warn'}}); if(TRIAGE.active)diagError('speech: '+(e&&e.message)); } }
     else { var fr=await triageStep(st); var fn=HOLD[st.id]; if(fn)R[st.id]=fn(fr); }
   }
@@ -2699,6 +2807,9 @@ function showResults(){
     saccades:{e:'⚡',n:'Horizontal Saccades'},
     antisac:{e:'🔀',n:'Antisaccades'},
     npc:{e:'🎯',n:'Convergence (NPC)'},
+    okn:{e:'🦓',n:'Optokinetic (OKN)'},
+    hints:{e:'🌀',n:'Vestibular (HINTS)'},
+    rt:{e:'⏱️',n:'Reaction Time'},
     cn7:{e:'😀',n:'Facial Symmetry (CN VII)'},
     cn5:{e:'😮',n:'Jaw Motor (CN V)'},
     cn910:{e:'🗣️',n:'Palate / Voice (CN IX–X)'},
