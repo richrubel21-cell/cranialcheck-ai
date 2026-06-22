@@ -54,7 +54,7 @@ body{font-family:var(--f);background:#000;-webkit-font-smoothing:antialiased}
 .live-dot{width:6px;height:6px;border-radius:50%;background:var(--green);animation:pulse 1.5s infinite}
 
 /* ── MODE BAR ── */
-.mode-bar{display:flex;align-items:flex-start;gap:6px;padding:8px 12px;border-top:1px solid var(--border);overflow-x:auto;background:var(--surface2)}
+.mode-bar{display:flex;flex-wrap:wrap;justify-content:center;align-items:flex-start;gap:6px;padding:8px 12px;border-top:1px solid var(--border);background:var(--surface2)}
 .mode-bar::-webkit-scrollbar{display:none}
 .mode-wrap{display:flex;flex-direction:column;align-items:center;gap:3px;flex-shrink:0;min-width:74px}
 .mode-btn{width:100%;padding:6px 12px;border-radius:20px;border:1px solid var(--border);background:var(--surface);font-size:11px;font-weight:700;color:var(--tx2);cursor:pointer;font-family:var(--f);white-space:nowrap;transition:all .2s;text-align:center}
@@ -304,6 +304,10 @@ body{font-family:var(--f);background:#000;-webkit-font-smoothing:antialiased}
     </div>
     <div class="mode-bar">
       <div class="mode-wrap">
+        <button class="mode-btn" id="modeFIELD" onclick="startMode('FIELD')">▶ FIELD</button>
+        <div class="mode-lbl">Back camera · examiner</div>
+      </div>
+      <div class="mode-wrap">
         <button class="mode-btn on" id="modeTRIAGE" onclick="startMode('TRIAGE')">▶ TRIAGE</button>
         <div class="mode-lbl">90-sec screen</div>
       </div>
@@ -314,10 +318,6 @@ body{font-family:var(--f);background:#000;-webkit-font-smoothing:antialiased}
       <div class="mode-wrap">
         <button class="mode-btn" id="modeEXTENDED" onclick="startMode('EXTENDED')">▶ EXTENDED</button>
         <div class="mode-lbl">+ full speech</div>
-      </div>
-      <div class="mode-wrap">
-        <button class="mode-btn" id="modeFIELD" onclick="startMode('FIELD')">▶ FIELD</button>
-        <div class="mode-lbl">Back camera · examiner</div>
       </div>
       <div class="mode-wrap">
         <button class="mode-btn" onclick="switchCamera()">🔄 Camera</button>
