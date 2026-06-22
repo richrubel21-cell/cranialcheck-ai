@@ -1460,6 +1460,7 @@ function startRenderLoop(){
             ATT.frames.push({
               gx:sg.h-(BASE.gazeH||0), gy:sg.v-(BASE.gazeV||0),
               tx:(ATT.dotX-0.5)*0.6, ty:(ATT.dotY-0.5)*0.3,
+              rawH:sg.h, rawV:sg.v, sx:ATT.dotX, sy:ATT.dotY,   // for 5-point gaze calibration
               blink:ATT.blinkInProgress, t:performance.now()
             });
           }
@@ -1841,6 +1842,7 @@ function resetExam(){
   TRIAGE={active:false,capturing:false,frames:[],baseEAR:null,baseYaw:null,baseAsym:null,baseMouth:null,result:null,
           calibStability:0,lightingScore:0,capturedFrames:0,expectedFrames:0,stepsComplete:0,startMs:0,renderFrames:0};
   GAZE_SMOOTH={h:[],v:[],len:3};
+  GAZE_CAL=null; CAL_QUALITY=0;
   resetEuro();
   if(attDotEl)attDotEl.style.display='none';
   hideResults();
@@ -2274,6 +2276,64 @@ function computeTriageOverall(R){
     bad:bad,warn:warn};
 }
 
+// ── 5-POINT GAZE CALIBRATION (spec §17.5) ──
+// Maps the iris-gaze signal (gazeH,gazeV) to screen position via a least-squares affine fit, so
+// pursuit/saccades become accurate. ENTIRELY ADDITIVE: if calibration is skipped/degenerate/poor,
+// GAZE_CAL stays null and scoring falls back to the (working) uncalibrated path — no regression.
+var GAZE_CAL=null, CAL_QUALITY=0;
+function solve3(M,b){                         // solve 3x3 linear system (Gaussian elimination)
+  var a=[M[0].slice(),M[1].slice(),M[2].slice()], r=b.slice(), i,j,k;
+  for(i=0;i<3;i++){
+    var p=i; for(j=i+1;j<3;j++) if(Math.abs(a[j][i])>Math.abs(a[p][i]))p=j;
+    if(Math.abs(a[p][i])<1e-9) return null;   // singular → degenerate calibration
+    var t=a[i];a[i]=a[p];a[p]=t; var tr=r[i];r[i]=r[p];r[p]=tr;
+    for(j=i+1;j<3;j++){ var f=a[j][i]/a[i][i]; for(k=i;k<3;k++)a[j][k]-=f*a[i][k]; r[j]-=f*r[i]; }
+  }
+  var x=[0,0,0];
+  for(i=2;i>=0;i--){ var s=r[i]; for(j=i+1;j<3;j++)s-=a[i][j]*x[j]; x[i]=s/a[i][i]; }
+  return x;
+}
+function fitGazeCal(S){                        // S: [{h,v,sx,sy}] → affine {ax,bx,cx,ay,by,cy} or null
+  if(S.length<4) return null;
+  var Shh=0,Shv=0,Sh=0,Svv=0,Sv=0,n=S.length,Shx=0,Svx=0,Sx=0,Shy=0,Svy=0,Sy=0;
+  S.forEach(function(p){ Shh+=p.h*p.h;Shv+=p.h*p.v;Sh+=p.h;Svv+=p.v*p.v;Sv+=p.v;
+    Shx+=p.h*p.sx;Svx+=p.v*p.sx;Sx+=p.sx; Shy+=p.h*p.sy;Svy+=p.v*p.sy;Sy+=p.sy; });
+  var M=[[Shh,Shv,Sh],[Shv,Svv,Sv],[Sh,Sv,n]];
+  var cx=solve3(M,[Shx,Svx,Sx]), cy=solve3(M,[Shy,Svy,Sy]);
+  if(!cx||!cy) return null;
+  return {ax:cx[0],bx:cx[1],cx:cx[2], ay:cy[0],by:cy[1],cy:cy[2]};
+}
+function mapGaze(h,v){ var C=GAZE_CAL; return C?{x:C.ax*h+C.bx*v+C.cx, y:C.ay*h+C.by*v+C.cy}:null; }
+async function runGazeCalibration(){
+  GAZE_CAL=null; CAL_QUALITY=0;
+  var pts=[[0.5,0.5],[0.16,0.20],[0.84,0.20],[0.16,0.80],[0.84,0.80]];  // center, TL, TR, BL, BR
+  createAttDot();
+  document.getElementById('cnEmoji').textContent='🎯';
+  document.getElementById('cnPromptTitle').textContent='Calibrating eye tracking';
+  document.getElementById('cnPromptSub').textContent='Look at each dot — keep your head still';
+  setStatus('Eye calibration','Follow each dot with your eyes, head still');
+  await speakAndWait('Keep your head still and look at each dot.');
+  var samples=[];
+  for(var i=0;i<pts.length;i++){
+    moveAttDot(pts[i][0],pts[i][1]); attDotEl.style.display='block';
+    ATT.active=true; ATT.frames=[];
+    await w(1300);
+    ATT.active=false;
+    var fr=ATT.frames.filter(function(f){return f.rawH!==undefined && isFinite(f.rawH) && isFinite(f.rawV);});
+    var use=fr.slice(Math.floor(fr.length*0.35));   // drop the approach phase, keep the fixation
+    if(use.length>=3) samples.push({h:mean(use.map(function(f){return f.rawH;})),
+                                    v:mean(use.map(function(f){return f.rawV;})), sx:pts[i][0], sy:pts[i][1]});
+  }
+  if(attDotEl)attDotEl.style.display='none';
+  var cal=fitGazeCal(samples);
+  if(cal){
+    var err=mean(samples.map(function(p){ return Math.hypot(cal.ax*p.h+cal.bx*p.v+cal.cx-p.sx, cal.ay*p.h+cal.by*p.v+cal.cy-p.sy); }));
+    if(isFinite(err) && err<0.18){ GAZE_CAL=cal; CAL_QUALITY=Math.round((1-Math.min(err/0.18,1))*100); }
+  }
+  if(CC_DEBUG)console.log('[CC] gaze calibration: '+(GAZE_CAL?('OK, quality '+CAL_QUALITY+'%'):'fell back to uncalibrated')+' ('+samples.length+' pts)');
+  return !!GAZE_CAL;
+}
+
 // ── ANIMATED DOT TASKS (smooth pursuit + saccades) ──
 // Reuse the ATT capture path in the render loop (gx/gy gaze vs tx/ty target) by animating attDotEl.
 function corr(a,b){
@@ -2333,17 +2393,40 @@ async function dotStep(step){
 // sign-robust). abs() handles whatever the mirror sign convention is.
 function scorePursuit(frames){
   if(frames.length<10)return{score:0,label:'No data',flag:'warn',metric:'eyes not tracked during pursuit'};
+  // CALIBRATED: error between mapped gaze and the actual dot position (calibration fixes scale/offset
+  // that correlation can't), so a healthy follower scores high and can read a true 'good'.
+  if(GAZE_CAL){
+    var errs=frames.map(function(f){var g=mapGaze(f.rawH,f.rawV); return g?Math.hypot(g.x-f.sx,g.y-f.sy):NaN;}).filter(isFinite);
+    if(errs.length>=8){
+      var me=mean(errs), s=clamp(1-me/0.22,0,1);
+      var flag=s>=0.55?'good':s>=0.35?'warn':'bad';
+      var label=s>=0.55?'Smooth pursuit intact':s>=0.35?'Pursuit partially tracked':'Pursuit poorly tracked';
+      return{score:s, value:Math.round(s*100), label:label, flag:flag, metric:'on-target '+Math.round(s*100)+'% · calibrated'};
+    }
+  }
+  // UNCALIBRATED fallback: correlation only, capped at WATCH (never red) — gaze units ≠ screen units.
   var ch=Math.abs(corr(frames.map(function(f){return f.gx;}),frames.map(function(f){return f.tx;})));
   var cv=Math.abs(corr(frames.map(function(f){return f.gy;}),frames.map(function(f){return f.ty;})));
-  var s=clamp(Math.max(ch, ch*0.6+cv*0.4),0,1);
-  // Uncalibrated iris-gaze caps at WATCH (never red) — the 5-point gaze calibration unlocks reliable 'good'.
-  var flag=s>=0.5?'good':'warn';
-  var label=s>=0.5?'Smooth pursuit tracked':'Pursuit limited — calibrate for accuracy';
-  return{score:s, value:Math.round(s*100), label:label, flag:flag, metric:'eye–target sync '+Math.round(s*100)+'%'};
+  var s2=clamp(Math.max(ch, ch*0.6+cv*0.4),0,1);
+  var flag2=s2>=0.5?'good':'warn';
+  var label2=s2>=0.5?'Smooth pursuit tracked':'Pursuit limited — calibrate for accuracy';
+  return{score:s2, value:Math.round(s2*100), label:label2, flag:flag2, metric:'eye–target sync '+Math.round(s2*100)+'%'};
 }
 // Saccades — does gaze jump in the correct direction toward each target? Sign-robust (mirror-safe).
 function scoreSaccade(frames){
   if(frames.length<8)return{score:0,label:'No data',flag:'warn',metric:'eyes not tracked'};
+  // CALIBRATED: fraction of frames where mapped gaze landed near the active off-center target.
+  if(GAZE_CAL){
+    var onc=frames.filter(function(f){return Math.abs(f.sx-0.5)>0.15 && f.rawH!==undefined;});
+    if(onc.length>=5){
+      var hit=onc.filter(function(f){var g=mapGaze(f.rawH,f.rawV); return g&&Math.abs(g.x-f.sx)<0.25;}).length;
+      var acc2=hit/onc.length, sc=clamp(acc2,0,1);
+      var fl=acc2>=0.55?'good':acc2>=0.35?'warn':'bad';
+      var lb=acc2>=0.55?'Saccades on target':acc2>=0.35?'Some saccade errors':'Saccades inaccurate';
+      return{score:sc, value:Math.round(acc2*100), label:lb, flag:fl, metric:'on-target '+Math.round(acc2*100)+'% · calibrated'};
+    }
+  }
+  // UNCALIBRATED fallback: direction-only, capped at WATCH.
   var on=frames.filter(function(f){return Math.abs(f.tx)>0.05;});
   if(on.length<5)return{score:0,label:'No data',flag:'warn',metric:'no targets captured'};
   var a=0,b=0;
@@ -2409,6 +2492,10 @@ async function startExam(){
     await speakAndWait('Continuing — results may be limited.');
   }
   TRIAGE.lightingScore=sampleLighting(document.getElementById('webcam'));
+
+  // 5-point gaze calibration (makes pursuit/saccades accurate). Fully guarded: if it throws or the
+  // fit is degenerate/poor, GAZE_CAL stays null and the exam runs exactly as before (uncalibrated).
+  try{ await runGazeCalibration(); }catch(e){ GAZE_CAL=null; if(TRIAGE.active)diagError('gazecal: '+(e&&e.message)); }
 
   // Run each step in order. calib runs first (sets baselines incl. baseSpread); pursuit/saccade
   // use the animated dot engine, the rest are capture-window 'hold' steps.
