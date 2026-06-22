@@ -437,6 +437,7 @@ const sb = (function(){
   console.warn('[CC] Supabase unavailable — exam will run but results will not be saved.');
   return null;
 })();
+try{ if(sb) setTimeout(function(){ try{ flushLocalSaveQueue(); }catch(e){} }, 1500); }catch(e){}  // retry any saves dropped on a prior run
 'use strict';
 
 // ═══════════════════════════════════════════════════
@@ -2804,6 +2805,7 @@ async function startExam(mode){
   // use the animated dot engine, the rest are capture-window 'hold' steps.
   var HOLD={calib:scoreCalib,perclos:scorePerclos,cn7:scoreCN7,tongue:scoreTongue,head:scoreHead,cn5:scoreCN5,cn910:scoreCN9_10,cn11:scoreCN11};
   var R={}, SPEECHACC=[];
+  try{
   for(var si=0;si<STEPS.length;si++){
     var st=STEPS[si];
     if(st.type==='pursuit'){ R[st.id]=scorePursuit(await dotStep(st)); }
@@ -2836,6 +2838,18 @@ async function startExam(mode){
 
   await speakAndWait(mode+' screen complete. '+overall.speak);
   showResults();
+  }catch(err){
+    // CRASH-SAFE: any mid-exam exception still saves a full diagnostic row (so we never lose a run).
+    diagError('exam crashed: '+(err&&err.message));
+    TRIAGE.active=false; examRunning=false;
+    try{ document.getElementById('cnPrompt').style.display='none'; }catch(e){}
+    var ovc; try{ ovc=computeTriageOverall(R||{}); }catch(e){ ovc={status:'ERROR',label:'Exam error',confidence:0,speak:'An error occurred.'}; }
+    ovc.examDurationSec=Math.round((performance.now()-TRIAGE.startMs)/100)/10; ovc.avgFps=0;
+    TRIAGE.result={domains:R||{}, overall:ovc, mode:mode, crashed:true};
+    try{ await saveExamToSupabase(TRIAGE.result); }catch(e){}
+    try{ setStatus('Exam error','A problem occurred — diagnostics saved. Please reload.'); document.getElementById('statusBanner').className='status-banner'; }catch(e){}
+    try{ showResults(); }catch(e){}
+  }
 }
 
 // ── RESULTS SCREEN ──
@@ -3002,14 +3016,66 @@ async function saveExamToSupabase(result) {
       avg_iris_count: DIAG.detectFrames>0 ? Math.round(DIAG.irisSum/DIAG.detectFrames*10)/10 : 0,
       min_fps: DIAG.min_fps,
       max_fps: DIAG.max_fps,
-      error_log: DIAG.errors.length ? DIAG.errors.join(' | ') : null
+      error_log: DIAG.errors.length ? DIAG.errors.join(' | ') : null,
+      // FULL diagnostics snapshot (every per-step frame count, timings, model info) for debugging.
+      diag_json: buildDiagJson(result)
     };
-    var res = await sb.from('exams').insert([record]);
-    if(res.error) console.warn('Supabase save error:', res.error.message);
-    else console.log('Exam saved to Supabase');
+    await resilientInsert(record);
   } catch(e) {
-    console.warn('Supabase save failed:', e.message);
+    console.warn('[CC] Supabase save failed (queuing):', e&&e.message);
+    try{ queueLocalSave({_err:String(e&&e.message), exam_mode:(result&&result.mode)||'?', device_info:navigator.userAgent}); }catch(_){}
   }
+}
+// Full DIAG snapshot + a few run-meta fields — captures everything debug-relevant, no per-column migration.
+function buildDiagJson(result){
+  var dj={}; try{ for(var k in DIAG){ if(typeof DIAG[k]!=='function') dj[k]=DIAG[k]; } }catch(e){}
+  try{
+    dj._steps_complete=TRIAGE.stepsComplete; dj._total_steps=TRIAGE.totalSteps;
+    dj._captured=TRIAGE.capturedFrames; dj._expected=TRIAGE.expectedFrames;
+    dj._render_frames=TRIAGE.renderFrames; dj._mode=(result&&result.mode);
+    dj._screen=(window.innerWidth+'x'+window.innerHeight); dj._dpr=window.devicePixelRatio;
+    dj._ts=Date.now();
+  }catch(e){}
+  return dj;
+}
+// Resilient insert: full record → on error retry without optional jsonb cols → else queue to localStorage.
+async function resilientInsert(record){
+  try{
+    var res=await sb.from('exams').insert([record]);
+    if(!res.error){ console.log('[CC] exam saved ✓'); return true; }
+    console.warn('[CC] save error, retrying minimal:', res.error.message);
+    var rec2={}; for(var k in record)rec2[k]=record[k]; delete rec2.diag_json;  // drop only the new col that may not exist yet (domains_json is verified present)
+    var res2=await sb.from('exams').insert([rec2]);
+    if(!res2.error){ console.log('[CC] exam saved (core only) ✓'); return true; }
+    console.warn('[CC] save error (retry):', res2.error.message);
+  }catch(e){ console.warn('[CC] save threw:', e&&e.message); }
+  queueLocalSave(record); return false;
+}
+function queueLocalSave(record){
+  try{
+    var q=JSON.parse(localStorage.getItem('cc_save_queue')||'[]');
+    q.push(record); if(q.length>50)q=q.slice(-50);
+    localStorage.setItem('cc_save_queue', JSON.stringify(q));
+    console.warn('[CC] save queued locally ('+q.length+' pending) — will retry next load');
+  }catch(e){}
+}
+// Retry any queued saves (called once on load after the Supabase client is ready).
+async function flushLocalSaveQueue(){
+  if(!sb)return;
+  var q; try{ q=JSON.parse(localStorage.getItem('cc_save_queue')||'[]'); }catch(e){ return; }
+  if(!q.length)return;
+  var remain=[];
+  for(var i=0;i<q.length;i++){
+    var ok=false;
+    try{
+      var r=await sb.from('exams').insert([q[i]]);
+      if(r.error){ var rec2={}; for(var k in q[i])rec2[k]=q[i][k]; delete rec2.diag_json; var r2=await sb.from('exams').insert([rec2]); ok=!r2.error; }
+      else ok=true;
+    }catch(e){ ok=false; }
+    if(!ok)remain.push(q[i]);
+  }
+  try{ localStorage.setItem('cc_save_queue', JSON.stringify(remain)); }catch(e){}
+  if(q.length-remain.length>0)console.log('[CC] flushed '+(q.length-remain.length)+' queued save(s) ✓');
 }
 
 // ═══════════════════════════════════════════════════
