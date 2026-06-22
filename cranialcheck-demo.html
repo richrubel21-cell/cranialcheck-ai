@@ -1895,7 +1895,11 @@ function resetExam(){
   GAZE_SMOOTH={h:[],v:[],len:3};
   GAZE_CAL=null; CAL_QUALITY=0;
   resetEuro();
+  // Tear down EVERY overlay/listener a prior run could have left up (any of these can freeze the screen).
   if(attDotEl)attDotEl.style.display='none';
+  if(typeof oknEl!=='undefined' && oknEl)oknEl.style.display='none';   // opaque full-screen — would freeze the view
+  if(typeof plrEl!=='undefined' && plrEl)plrEl.style.display='none';
+  try{ if(window.speechSynthesis)window.speechSynthesis.cancel(); }catch(e){}
   hideResults();
   document.getElementById('alertBox').style.display='none';
   document.getElementById('replayBtn').style.display='none';
@@ -1905,7 +1909,9 @@ function resetExam(){
     var el=document.getElementById(id);
     if(el){el.textContent='—';el.className='score-val pending';}
   });
+  // If the camera is still live, re-run; if it dropped (common on mobile after a long session), re-acquire it.
   if(cameraActive)startExam(lastMode);
+  else { try{ initCamera(); }catch(e){ console.warn('[CC] reset re-init failed:',e&&e.message); } }
 }
 
 function w(ms){return new Promise(function(r){setTimeout(r,ms);});}
@@ -2851,6 +2857,7 @@ async function startExam(mode){
     diagError('exam crashed: '+(err&&err.message));
     TRIAGE.active=false; examRunning=false;
     try{ document.getElementById('cnPrompt').style.display='none'; }catch(e){}
+    try{ if(oknEl)oknEl.style.display='none'; if(plrEl)plrEl.style.display='none'; if(attDotEl)attDotEl.style.display='none'; }catch(e){}  // never leave an overlay covering the screen
     var ovc; try{ ovc=computeTriageOverall(R||{}); }catch(e){ ovc={status:'ERROR',label:'Exam error',confidence:0,speak:'An error occurred.'}; }
     ovc.examDurationSec=Math.round((performance.now()-TRIAGE.startMs)/100)/10; ovc.avgFps=0;
     TRIAGE.result={domains:R||{}, overall:ovc, mode:mode, crashed:true};
