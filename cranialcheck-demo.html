@@ -535,7 +535,11 @@ var STEP={
   ddk:     {id:'ddk',    type:'speech', speechId:'motor',        emoji:'⚡', name:'Rapid Syllables', bannerSub:'Say pa-ta-ka, fast',        title:'Say "pa-ta-ka" over and over, fast as you can',          sub:'Speech — DDK rate'},
   spBase:  {id:'spBase', type:'speech', speechId:'baseline',     emoji:'🗣️', name:'Speech',          bannerSub:'Repeat the phrase',         title:'Repeat: "The sky is blue and the grass is green"',       sub:'Speech — clarity & rate'},
   spArtic: {id:'spArtic',type:'speech', speechId:'articulation', emoji:'👅', name:'Articulation',    bannerSub:'Repeat the tongue-twister', title:'Repeat: "Peter Piper picked a peck of pickled peppers"', sub:'Speech — articulation'},
-  spNat:   {id:'spNat',  type:'speech', speechId:'natural',      emoji:'🎵', name:'Natural Speech',  bannerSub:'Repeat the phrase',         title:'Repeat: "I like piña coladas and dancing in the rain"',  sub:'Speech — natural'}
+  spNat:   {id:'spNat',  type:'speech', speechId:'natural',      emoji:'🎵', name:'Natural Speech',  bannerSub:'Repeat the phrase',         title:'Repeat: "I like piña coladas and dancing in the rain"',  sub:'Speech — natural'},
+  // cranial-nerve motor tests (camera) — fill out the "10 CN" coverage
+  cn5:     {id:'cn5',   type:'hold', emoji:'😮', name:'Jaw Opening', bannerSub:'Open wide',                  title:'Open your mouth as wide as you can',                   sub:'Jaw motor (CN V)',          dur:4000},
+  cn910:   {id:'cn910', type:'hold', emoji:'🗣️', name:'Say Ahhh',    bannerSub:'Open wide and say ahhh',     title:'Open your mouth and say “ahhh”',                       sub:'Palate / voice (CN IX–X)',  dur:4000},
+  cn11:    {id:'cn11',  type:'hold', emoji:'↔️', name:'Head Turn',   bannerSub:'Turn head left, then right', title:'Slowly turn your head fully left, then fully right',   sub:'Head rotation (CN XI)',     dur:6000}
 };
 function seq(){
   var ids=[].slice.call(arguments);
@@ -550,7 +554,7 @@ function seq(){
 // (antisaccade / NPC / OKN / CN V·IX·X·XI come in later phases.)
 var TRIAGE_STEPS   = seq('calib','perclos','pursuit','saccades','cn7','tongue','head');
 var ACUTE_STEPS    = seq('calib','perclos','pursuit','saccades','cn7','tongue','head','ddk');
-var EXTENDED_STEPS = seq('calib','perclos','pursuit','saccades','cn7','tongue','head','spBase','spArtic','ddk','spNat');
+var EXTENDED_STEPS = seq('calib','perclos','pursuit','saccades','cn7','cn5','cn910','tongue','cn11','head','spBase','spArtic','ddk','spNat');
 var MODE_STEPS     = {TRIAGE:TRIAGE_STEPS, ACUTE:ACUTE_STEPS, EXTENDED:EXTENDED_STEPS};
 var lastMode='TRIAGE';
 function highlightMode(mode){
@@ -2258,6 +2262,31 @@ function scoreHead(frames){
   return{score:clamp(1-maxSD/6,0,1), value:maxSD, yawSD:yawSD, pitchSD:pitchSD, rollSD:rollSD,
     metric:'max SD '+maxSD.toFixed(1)+'° (y'+yawSD.toFixed(1)+'/p'+pitchSD.toFixed(1)+'/r'+rollSD.toFixed(1)+')', label:label, flag:flag};
 }
+// CN V (trigeminal motor) — maximal jaw opening (aperture = lip 13/14 distance / mouth width). Ref §3.
+function scoreCN5(frames){
+  if(frames.length<5)return{score:0,label:'No data',flag:'warn',metric:'insufficient tracking'};
+  var mx=Math.max.apply(null,frames.map(function(f){return f.mouthOpen;}));
+  var flag=mx>=0.45?'good':mx>=0.28?'warn':'bad';
+  var label=mx>=0.45?'Jaw opens fully':mx>=0.28?'Reduced jaw opening':'Limited jaw opening';
+  return{score:clamp(mx/0.6,0,1), value:mx, label:label, flag:flag, metric:'max aperture '+mx.toFixed(2)};
+}
+// CN IX/X (glossopharyngeal/vagus) — open mouth + sustained "ahhh" (mouth-aperture proxy for palate/phonation). Ref §6.
+function scoreCN9_10(frames){
+  if(frames.length<5)return{score:0,label:'No data',flag:'warn',metric:'insufficient tracking'};
+  var mx=Math.max.apply(null,frames.map(function(f){return f.mouthOpen;}));
+  var flag=mx>=0.35?'good':mx>=0.20?'warn':'bad';
+  var label=mx>=0.35?'Mouth opens / phonation':mx>=0.20?'Limited mouth opening':'No mouth opening';
+  return{score:clamp(mx/0.5,0,1), value:mx, label:label, flag:flag, metric:'aperture '+mx.toFixed(2)};
+}
+// CN XI (spinal accessory / SCM) — head-rotation yaw excursion (turn left↔right). Ref §7.
+function scoreCN11(frames){
+  if(frames.length<5)return{score:0,label:'No data',flag:'warn',metric:'insufficient tracking'};
+  var ys=frames.map(function(f){return f.yawDeg;});
+  var range=Math.max.apply(null,ys)-Math.min.apply(null,ys);
+  var flag=range>=30?'good':range>=15?'warn':'bad';
+  var label=range>=30?'Full head rotation':range>=15?'Reduced rotation':'Limited rotation';
+  return{score:clamp(range/50,0,1), value:Math.round(range), label:label, flag:flag, metric:'yaw range '+Math.round(range)+'°'};
+}
 
 // Confidence: 0.35·validFramePct + 0.20·lighting + 0.25·calibStability + 0.20·completionRate
 // Returns the rolled-up confidence plus its four sub-components, all as 0-100 numbers.
@@ -2575,7 +2604,7 @@ async function startExam(mode){
 
   // Run each step in order. calib runs first (sets baselines incl. baseSpread); pursuit/saccade
   // use the animated dot engine, the rest are capture-window 'hold' steps.
-  var HOLD={calib:scoreCalib,perclos:scorePerclos,cn7:scoreCN7,tongue:scoreTongue,head:scoreHead};
+  var HOLD={calib:scoreCalib,perclos:scorePerclos,cn7:scoreCN7,tongue:scoreTongue,head:scoreHead,cn5:scoreCN5,cn910:scoreCN9_10,cn11:scoreCN11};
   var R={}, SPEECHACC=[];
   for(var si=0;si<STEPS.length;si++){
     var st=STEPS[si];
@@ -2627,7 +2656,10 @@ function showResults(){
     pursuit:{e:'🔵',n:'Smooth Pursuit'},
     saccades:{e:'⚡',n:'Horizontal Saccades'},
     cn7:{e:'😀',n:'Facial Symmetry (CN VII)'},
+    cn5:{e:'😮',n:'Jaw Motor (CN V)'},
+    cn910:{e:'🗣️',n:'Palate / Voice (CN IX–X)'},
     tongue:{e:'👅',n:'Tongue (CN XII)'},
+    cn11:{e:'↔️',n:'Head Rotation (CN XI)'},
     head:{e:'🧭',n:'Head Stability'},
     speech:{e:'🗣️',n:'Speech (CN VII/X/XII)'}
   };
@@ -2678,7 +2710,7 @@ async function saveExamToSupabase(result) {
     // Guard: TRIAGE blueprint changed (gcs removed; pursuit/saccades added). Missing domains → {}
     // so the existing Supabase columns serialize to null instead of throwing. (pursuit/saccades
     // have no columns yet — they'll persist once the table is migrated.)
-    ['perclos','pursuit','saccades','cn7','gcs','tongue','head'].forEach(function(k){ if(!d[k]) d[k]={}; });
+    ['perclos','pursuit','saccades','cn7','gcs','tongue','head','speech','cn5','cn910','cn11'].forEach(function(k){ if(!d[k]) d[k]={}; });
     var num = function(x){ return (typeof x==='number' && isFinite(x)) ? x : null; };
     var rnd = function(x,p){ return (typeof x==='number' && isFinite(x)) ? Math.round(x*p)/p : null; };
     var record = {
@@ -2701,6 +2733,7 @@ async function saveExamToSupabase(result) {
       head_label: d.head.label,
       head_metric: d.head.metric,
       head_flag: d.head.flag,
+      speech_label: d.speech.label, speech_metric: d.speech.metric, speech_flag: d.speech.flag, speech_value: num(d.speech.value),
       // oculomotor (new TRIAGE steps 2 & 3)
       pursuit_label: d.pursuit.label,  pursuit_metric: d.pursuit.metric,  pursuit_flag: d.pursuit.flag,  pursuit_value: num(d.pursuit.value),
       saccades_label: d.saccades.label, saccades_metric: d.saccades.metric, saccades_flag: d.saccades.flag, saccades_value: num(d.saccades.value),

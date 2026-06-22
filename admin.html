@@ -318,7 +318,7 @@ function renderDashboard(){
   h+='<div class="section-t">Exam Records</div>';
   h+='<div class="table-card"><div class="table-scroll"><table><thead><tr>'
     +'<th>#</th><th>Date &amp; Time</th><th>Mode</th><th>Result</th><th>Confidence</th>'
-    +'<th>Alertness</th><th>Pursuit</th><th>Saccades</th><th>Facial Motor</th><th>Tongue</th><th>Head</th><th>Device</th>'
+    +'<th>Alertness</th><th>Pursuit</th><th>Saccades</th><th>Facial Motor</th><th>Tongue</th><th>Head</th><th>Speech</th><th>Device</th>'
     +'</tr></thead><tbody>';
   var rv=function(v,dec){return (v==null||isNaN(v))?'—':Number(v).toFixed(dec);};
   var ri=function(v){return (v==null||isNaN(v))?'—':Math.round(v);};
@@ -346,16 +346,17 @@ function renderDashboard(){
       +'<td class="'+flagClass(r.cn7_flag)+'">'+esc(r.cn7_label||'—')+raw('(asym: '+rv(r.cn7_value,3)+')')+'</td>'
       +'<td class="'+flagClass(r.tongue_flag)+'">'+esc(r.tongue_label||'—')+raw('(aperture: '+rv(r.tongue_value,2)+')')+'</td>'
       +'<td class="'+flagClass(r.head_flag)+'">'+esc(r.head_label||'—')+raw('('+headRaw+')')+'</td>'
+      +'<td class="'+flagClass(r.speech_flag)+'">'+esc(r.speech_label||'—')+raw('('+(r.speech_metric||'')+')')+'</td>'
       +'<td>'+esc(browserName(r.device_info))+'</td>'
       +'</tr>';
     // quality metrics row
-    h+='<tr class="detail-row'+(broken?' brk':'')+'"'+bg+'><td colspan="12">'
+    h+='<tr class="detail-row'+(broken?' brk':'')+'"'+bg+'><td colspan="13">'
       +'Valid frames: '+ri(r.valid_frame_pct)+'% &nbsp;|&nbsp; Lighting: '+ri(r.lighting_score)+'% &nbsp;|&nbsp; '
       +'Calibration: '+ri(r.calibration_stability)+'% &nbsp;|&nbsp; Completion: '+ri(r.completion_rate)+'% &nbsp;|&nbsp; '
       +'Duration: '+rv(r.exam_duration_sec,1)+'s &nbsp;|&nbsp; FPS: '+ri(r.avg_fps)
       +'</td></tr>';
     // diagnostics row
-    h+='<tr class="diag-row'+(broken?' brk':'')+'"'+bg+'><td colspan="12">'
+    h+='<tr class="diag-row'+(broken?' brk':'')+'"'+bg+'><td colspan="13">'
       +'<span class="diag-k">Model:</span> '+(modelOk
           ?'<b style="color:#16a34a">loaded ('+esc(r.model_delegate||'?')+')</b>'
           :'<b style="color:#dc2626">FAILED ('+esc(r.model_delegate||'none')+')</b>')
@@ -399,6 +400,7 @@ function exportCSV(){
     'gcs_label','gcs_metric','gcs_flag','gcs_e',
     'tongue_label','tongue_metric','tongue_flag','tongue_value',
     'head_label','head_metric','head_flag','head_yaw_sd','head_pitch_sd','head_roll_sd',
+    'speech_label','speech_metric','speech_flag','speech_value',
     'valid_frame_pct','lighting_score','calibration_stability','completion_rate',
     'exam_duration_sec','avg_fps','subject_age','subject_sex','subject_id',
     'model_loaded','model_delegate','face_detected',
