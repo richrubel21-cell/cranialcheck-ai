@@ -827,7 +827,16 @@ async function initCamera(){
   positionOverlays();
 
   setStatus('Loading AI Model…','Please wait');
-  await loadFaceLandmarker();
+  // Auto-retry: a dropped WASM/model fetch (flaky network) is the #1 cause of "no mesh" —
+  // retry up to 3x so a transient failure self-heals instead of silently showing the guide.
+  var loaded=false;
+  for(var attempt=1; attempt<=3 && !loaded; attempt++){
+    if(attempt>1){ setStatus('Reconnecting to AI… ('+attempt+'/3)','One moment'); await w(900); }
+    loaded=await loadFaceLandmarker();
+  }
+  if(!loaded){
+    setStatus('AI model didn’t load','Tap ↺ Reset, or pull down to refresh — check your connection');
+  }
   startRenderLoop();
   // Brief warm-up so the first frames flow, then start the exam.
   await new Promise(function(r){setTimeout(r,800);});
