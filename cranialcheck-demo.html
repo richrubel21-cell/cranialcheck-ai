@@ -2871,6 +2871,7 @@ async function startExam(mode){
   document.getElementById('replayBtn').style.display='none';
   document.getElementById('statusBanner').className='status-banner';
   document.getElementById('cnPrompt').style.display='flex';
+  var _mb=document.querySelector('.mode-bar'); if(_mb)_mb.style.display='none';   // capture screen = camera only, no mode buttons
 
   setStatus(mode+' Screen',(STEPS.length-1)+' steps');
   await speakAndWait('Center your face in the frame and follow the on-screen prompts.');
@@ -3027,6 +3028,7 @@ function showResults(){
 function hideResults(){
   var el=document.getElementById('results');
   if(el)el.classList.remove('show');
+  if(!examRunning){ var mb=document.querySelector('.mode-bar'); if(mb)mb.style.display=''; }  // restore mode buttons when back to the idle live view
 }
 function exportReport(){
   var r=TRIAGE.result; if(!r)return;
