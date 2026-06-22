@@ -645,7 +645,7 @@ function landmarkerOpts(delegate){
     minFacePresenceConfidence:0.5,
     minTrackingConfidence:0.5,
     outputFaceBlendshapes:true,
-    outputFacialTransformationMatrixes:true
+    outputFacialTransformationMatrixes:false  // face-geometry/Procrustes calculator crashes on some GPUs (RET_CHECK "design matrix norm too small") and kills the whole detection — head pose is derived from landmarks instead
   };
 }
 // Pinned to a mobile-proven stable release (0.10.14). Newer builds have flaked on some phones;
@@ -1434,9 +1434,9 @@ function startRenderLoop(){
             var cats=results.faceBlendshapes[0].categories||[];
             for(var bi=0;bi<cats.length;bi++){BLEND[cats[bi].categoryName]=cats[bi].score;}
           }
-          if(results.facialTransformationMatrixes&&results.facialTransformationMatrixes.length>0){
-            POSE=matrixToEuler(results.facialTransformationMatrixes[0].data);
-          }
+          // Head pose from landmarks (the transform-matrix calculator is disabled — it crashed
+          // the whole detection on some GPUs). Variance of these still drives head-stability scoring.
+          POSE=landmarkPose(lm);
 
           pushBuf('iris',{Lx:features.Lx,Ly:features.Ly,Rx:features.Rx,Ry:features.Ry});
           pushBuf('mouth',features.mouthOpen);
@@ -2060,7 +2060,21 @@ function renderSheet(){
 // ═══════════════════════════════════════════════════
 function mean(arr){return arr.length?arr.reduce(function(a,b){return a+b;},0)/arr.length:0;}
 
-// Decompose a column-major 4x4 facial transformation matrix into yaw/pitch/roll (degrees)
+// Head pose estimated directly from landmarks (no face-geometry calculator → no Procrustes crash).
+// Absolute values are approximate, but their variance over a window is what head-stability scoring needs.
+function landmarkPose(lm){
+  var L=lm[33], R=lm[263], nose=lm[4], top=lm[10]||lm[151], chin=lm[152];
+  if(!L||!R||!nose) return {yaw:0,pitch:0,roll:0};
+  var D=180/Math.PI;
+  var roll=Math.atan2(R.y-L.y, R.x-L.x)*D;                 // inter-ocular tilt
+  var eyeMidX=(L.x+R.x)/2, eyeMidY=(L.y+R.y)/2, eyeW=Math.abs(R.x-L.x)||0.001;
+  var yaw=((nose.x-eyeMidX)/eyeW)*90;                      // nose offset between the eyes
+  var faceH=(top&&chin)?Math.abs(chin.y-top.y):0.3;
+  var pitch=((nose.y-eyeMidY)/(faceH||0.3))*90;            // nose vertical vs eye line
+  return {yaw:yaw, pitch:pitch, roll:roll};
+}
+
+// Decompose a column-major 4x4 facial transformation matrix into yaw/pitch/roll (degrees) [unused — matrix disabled]
 function matrixToEuler(m){
   if(!m||m.length<11)return{yaw:0,pitch:0,roll:0};
   var r00=m[0], r10=m[1], r20=m[2], r21=m[6], r22=m[10];
