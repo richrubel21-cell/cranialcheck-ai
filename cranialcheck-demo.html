@@ -539,7 +539,10 @@ var STEP={
   // cranial-nerve motor tests (camera) — fill out the "10 CN" coverage
   cn5:     {id:'cn5',   type:'hold', emoji:'😮', name:'Jaw Opening', bannerSub:'Open wide',                  title:'Open your mouth as wide as you can',                   sub:'Jaw motor (CN V)',          dur:4000},
   cn910:   {id:'cn910', type:'hold', emoji:'🗣️', name:'Say Ahhh',    bannerSub:'Open wide and say ahhh',     title:'Open your mouth and say “ahhh”',                       sub:'Palate / voice (CN IX–X)',  dur:4000},
-  cn11:    {id:'cn11',  type:'hold', emoji:'↔️', name:'Head Turn',   bannerSub:'Turn head left, then right', title:'Slowly turn your head fully left, then fully right',   sub:'Head rotation (CN XI)',     dur:6000}
+  cn11:    {id:'cn11',  type:'hold', emoji:'↔️', name:'Head Turn',   bannerSub:'Turn head left, then right', title:'Slowly turn your head fully left, then fully right',   sub:'Head rotation (CN XI)',     dur:6000},
+  // oculomotor extras
+  antisac: {id:'antisac', type:'antisaccade', emoji:'🔀', name:'Look Away', bannerSub:'Look OPPOSITE the dot',     title:'When the dot appears, look to the OPPOSITE side — away from it', sub:'Antisaccades (mTBI marker)',  dur:8000},
+  npc:     {id:'npc',     type:'npc',         emoji:'🎯', name:'Convergence', bannerSub:'Follow the dot as it nears', title:'Keep both eyes on the dot as it moves toward you',               sub:'Convergence (NPC proxy)',     dur:8000}
 };
 function seq(){
   var ids=[].slice.call(arguments);
@@ -553,8 +556,8 @@ function seq(){
 // Tiered modes (spec §25). ACUTE adds DDK speech; EXTENDED adds the full speech battery.
 // (antisaccade / NPC / OKN / CN V·IX·X·XI come in later phases.)
 var TRIAGE_STEPS   = seq('calib','perclos','pursuit','saccades','cn7','tongue','head');
-var ACUTE_STEPS    = seq('calib','perclos','pursuit','saccades','cn7','tongue','head','ddk');
-var EXTENDED_STEPS = seq('calib','perclos','pursuit','saccades','cn7','cn5','cn910','tongue','cn11','head','spBase','spArtic','ddk','spNat');
+var ACUTE_STEPS    = seq('calib','perclos','pursuit','saccades','antisac','npc','cn7','tongue','head','ddk');
+var EXTENDED_STEPS = seq('calib','perclos','pursuit','saccades','antisac','npc','cn7','cn5','cn910','tongue','cn11','head','spBase','spArtic','ddk','spNat');
 var MODE_STEPS     = {TRIAGE:TRIAGE_STEPS, ACUTE:ACUTE_STEPS, EXTENDED:EXTENDED_STEPS};
 var lastMode='TRIAGE';
 function highlightMode(mode){
@@ -658,8 +661,9 @@ function speakAndWait(text){
     u.rate=0.9; u.pitch=1.0; u.volume=1;
     u.onerror=function(){resolve();};
     window.speechSynthesis.speak(u);
-    // Fallback if onend never fires (iOS bug)
-    var fallback=setTimeout(resolve, Math.max(3000, text.length*80));
+    // Fallback only if onend never fires (iOS). Generous (~130ms/char at rate 0.9) so it never cuts a
+    // phrase short — normal completion is handled by onend below; this just bounds the iOS no-onend case.
+    var fallback=setTimeout(resolve, Math.max(4000, text.length*130));
     u.onend=function(){clearTimeout(fallback);setTimeout(resolve,400);};
   });
 }
@@ -1500,6 +1504,7 @@ function startRenderLoop(){
               gx:sg.h-(BASE.gazeH||0), gy:sg.v-(BASE.gazeV||0),
               tx:(ATT.dotX-0.5)*0.6, ty:(ATT.dotY-0.5)*0.3,
               rawH:sg.h, rawV:sg.v, sx:ATT.dotX, sy:ATT.dotY,   // for 5-point gaze calibration
+              irisGap:(features.irisL&&features.irisR&&features.IOD)?(dist(features.irisL,features.irisR)/features.IOD):null,  // for NPC convergence
               blink:ATT.blinkInProgress, t:performance.now()
             });
           }
@@ -2425,7 +2430,9 @@ function runDotTask(mode,durMs){
       if(mode==='pursuit'){
         if(ph<0.6){ x=0.5+0.38*Math.sin(ph/0.6*Math.PI*3); y=midY; }            // horizontal sweeps L↔R
         else      { x=0.5; y=topFrac+span*(0.5+0.45*Math.sin((ph-0.6)/0.4*Math.PI*2)); } // vertical up↔down
-      }else{ // saccade — jump between two fixed targets ~ every 1.1s
+      }else if(mode==='npc'){
+        x=0.5; y=topFrac+span*((el/2500)%1);   // far(top) → near(bottom), repeating ~2.5s (convergence proxy)
+      }else{ // saccade / antisaccade — jump between two fixed targets ~ every 1.1s
         x=(Math.floor(el/1100)%2)?0.82:0.18; y=midY;
       }
       ATT.dotX=x; ATT.dotY=y; moveAttDot(x,y);
@@ -2445,7 +2452,8 @@ async function dotStep(step){
   fill.style.transition='none'; fill.style.width='0%'; void fill.offsetWidth;
   fill.style.transition='width '+step.dur+'ms linear';
   setTimeout(function(){fill.style.width='100%';},30);
-  var frames=await runDotTask(step.type==='saccade'?'saccade':'pursuit', step.dur);
+  var dm = step.type==='pursuit'?'pursuit' : (step.type==='npc'?'npc' : 'saccade');  // antisaccade reuses saccade motion
+  var frames=await runDotTask(dm, step.dur);
   fill.style.transition='width 3s linear';
   DIAG[step.id+'_frames']=frames.length;
   TRIAGE.capturedFrames+=frames.length;
@@ -2504,6 +2512,38 @@ function scoreSaccade(frames){
   var flag=(moved&&acc>=0.6)?'good':'warn';
   var label=!moved?'Minimal eye movement':acc>=0.6?'Saccades on target':'Saccades — calibrate for accuracy';
   return{score:s, value:Math.round(acc*100), label:label, flag:flag, metric:'direction accuracy '+Math.round(acc*100)+'%'};
+}
+// Antisaccade — patient must look AWAY from the dot; looking TOWARD it is an error (error rate is the
+// #1 mTBI oculomotor marker, ref §1.2: >30% flag). Needs calibration to judge direction reliably.
+function scoreAntisaccade(frames){
+  if(frames.length<8)return{score:0,label:'No data',flag:'warn',metric:'eyes not tracked'};
+  if(GAZE_CAL){
+    var on=frames.filter(function(f){return Math.abs(f.sx-0.5)>0.15 && f.rawH!==undefined;});
+    if(on.length>=5){
+      var toward=on.filter(function(f){var g=mapGaze(f.rawH,f.rawV); return g && (g.x-0.5)*(f.sx-0.5)>0;}).length; // same side = error
+      var er=toward/on.length, s=clamp(1-er,0,1);
+      var flag=er<=0.15?'good':er<=0.30?'warn':'bad';
+      var label=er<=0.15?'Antisaccades normal':er<=0.30?'Some antisaccade errors':'High antisaccade error rate';
+      return{score:s, value:Math.round(er*100), label:label, flag:flag, metric:'error rate '+Math.round(er*100)+'% · calibrated'};
+    }
+  }
+  // uncalibrated: direction not reliable — just confirm the eyes moved.
+  var gxs=frames.map(function(f){return f.gx;});
+  var amp=Math.max.apply(null,gxs)-Math.min.apply(null,gxs), moved=amp>0.04;
+  return{score:moved?0.5:0.3, value:0, label:moved?'Eyes responding — calibrate for error rate':'Minimal eye movement', flag:'warn', metric:'needs calibration'};
+}
+// NPC (near point of convergence) — proxy: as the dot nears, both irises should turn inward, shrinking
+// the inter-iris gap. Convergence = baseline gap − minimum gap. Ref §1.4. Soft (caps at WATCH).
+function scoreNPC(frames){
+  var g=frames.map(function(f){return f.irisGap;}).filter(function(x){return x!=null&&isFinite(x);});
+  if(g.length<8)return{score:0,label:'No data',flag:'warn',metric:'eyes not tracked'};
+  var base=g.slice(0,Math.max(3,Math.floor(g.length*0.2))).reduce(function(a,b){return a+b;},0)/Math.max(3,Math.floor(g.length*0.2));
+  var minGap=Math.min.apply(null,g);
+  var conv=base-minGap;                                  // positive = converged inward
+  var s=clamp(conv/0.05,0,1);
+  var flag=conv>=0.03?'good':conv>=0.012?'warn':'bad';
+  var label=conv>=0.03?'Convergence intact':conv>=0.012?'Reduced convergence':'Poor convergence';
+  return{score:s, value:Math.round(conv*1000)/1000, label:label, flag:flag, metric:'convergence '+(conv*100).toFixed(1)+'% IOD'};
 }
 
 // ── SPEECH STEP (mic, Web Speech API) ── reuses SPEECH_TESTS / runSpeechTest / scoreDDK / scoreSpeech.
@@ -2610,6 +2650,8 @@ async function startExam(mode){
     var st=STEPS[si];
     if(st.type==='pursuit'){ R[st.id]=scorePursuit(await dotStep(st)); }
     else if(st.type==='saccade'){ R[st.id]=scoreSaccade(await dotStep(st)); }
+    else if(st.type==='antisaccade'){ R[st.id]=scoreAntisaccade(await dotStep(st)); }
+    else if(st.type==='npc'){ R[st.id]=scoreNPC(await dotStep(st)); }
     else if(st.type==='speech'){ try{ SPEECHACC.push(await speechStep(st)); }catch(e){ SPEECHACC.push({id:st.speechId,label:st.name,res:{error:'speech error',score:0,label:'No response',flag:'warn'}}); if(TRIAGE.active)diagError('speech: '+(e&&e.message)); } }
     else { var fr=await triageStep(st); var fn=HOLD[st.id]; if(fn)R[st.id]=fn(fr); }
   }
@@ -2655,6 +2697,8 @@ function showResults(){
     perclos:{e:'👁️',n:'Alertness (PERCLOS)'},
     pursuit:{e:'🔵',n:'Smooth Pursuit'},
     saccades:{e:'⚡',n:'Horizontal Saccades'},
+    antisac:{e:'🔀',n:'Antisaccades'},
+    npc:{e:'🎯',n:'Convergence (NPC)'},
     cn7:{e:'😀',n:'Facial Symmetry (CN VII)'},
     cn5:{e:'😮',n:'Jaw Motor (CN V)'},
     cn910:{e:'🗣️',n:'Palate / Voice (CN IX–X)'},
@@ -2664,7 +2708,7 @@ function showResults(){
     speech:{e:'🗣️',n:'Speech (CN VII/X/XII)'}
   };
   var domsHtml='';
-  Object.keys(d).forEach(function(k){ if(k==='calib')return; var m=DOM_META[k]; if(!m||!d[k])return; domsHtml+=domCard(m.e,m.n,d[k]); });
+  Object.keys(d).forEach(function(k){ if(k==='calib')return; var m=DOM_META[k]; if(!m||!d[k]||!d[k].label)return; domsHtml+=domCard(m.e,m.n,d[k]); }); // skip empty save-guard placeholders
   h+='<div class="res-domains">'+domsHtml+'</div>';
   h+='<div class="res-actions">'
     +'<button class="res-btn primary" onclick="resetExam()">RUN AGAIN</button>'
@@ -2690,7 +2734,7 @@ function exportReport(){
     'OVERALL: '+o.label+'   (Confidence '+o.confidence+'%)',''
   ];
   Object.keys(NAMES).forEach(function(k){
-    if(d[k]) lines.push((NAMES[k]+':').padEnd(26,' ')+d[k].label+' — '+d[k].metric);
+    if(d[k]&&d[k].label) lines.push((NAMES[k]+':').padEnd(26,' ')+d[k].label+' — '+d[k].metric);
   });
   lines.push('','This screening tool aids clinical assessment. It does not constitute a diagnosis.',
     'Contact: rich.rubel@predictwellhealth.ai');
@@ -2710,13 +2754,17 @@ async function saveExamToSupabase(result) {
     // Guard: TRIAGE blueprint changed (gcs removed; pursuit/saccades added). Missing domains → {}
     // so the existing Supabase columns serialize to null instead of throwing. (pursuit/saccades
     // have no columns yet — they'll persist once the table is migrated.)
-    ['perclos','pursuit','saccades','cn7','gcs','tongue','head','speech','cn5','cn910','cn11'].forEach(function(k){ if(!d[k]) d[k]={}; });
+    // Guard ONLY the domains referenced by per-column fields below. Others (cn5/cn910/cn11/antisac/npc)
+    // persist via domains_json and must NOT be injected here, or empty {} would render as broken cards.
+    var dj={}; for(var dk in d) dj[dk]=d[dk];   // clean snapshot of REAL run domains (before guard adds {})
+    ['perclos','pursuit','saccades','cn7','gcs','tongue','head','speech'].forEach(function(k){ if(!d[k]) d[k]={}; });
     var num = function(x){ return (typeof x==='number' && isFinite(x)) ? x : null; };
     var rnd = function(x,p){ return (typeof x==='number' && isFinite(x)) ? Math.round(x*p)/p : null; };
     var record = {
-      exam_mode: 'TRIAGE',
+      exam_mode: (result.mode||'TRIAGE'),
       overall_result: o.status,
       confidence: o.confidence,
+      domains_json: dj,   // clean full domain set as JSON — persists every domain (incl. new CNs) without per-column migrations
       // labels / metrics / flags
       perclos_label: d.perclos.label,
       perclos_metric: d.perclos.metric,
