@@ -304,16 +304,20 @@ body{font-family:var(--f);background:#000;-webkit-font-smoothing:antialiased}
     </div>
     <div class="mode-bar">
       <div class="mode-wrap">
-        <button class="mode-btn on" id="modeTRIAGE" onclick="startExam('TRIAGE')">▶ TRIAGE</button>
+        <button class="mode-btn on" id="modeTRIAGE" onclick="startMode('TRIAGE')">▶ TRIAGE</button>
         <div class="mode-lbl">90-sec screen</div>
       </div>
       <div class="mode-wrap">
-        <button class="mode-btn" id="modeACUTE" onclick="startExam('ACUTE')">▶ ACUTE</button>
+        <button class="mode-btn" id="modeACUTE" onclick="startMode('ACUTE')">▶ ACUTE</button>
         <div class="mode-lbl">+ DDK speech</div>
       </div>
       <div class="mode-wrap">
-        <button class="mode-btn" id="modeEXTENDED" onclick="startExam('EXTENDED')">▶ EXTENDED</button>
+        <button class="mode-btn" id="modeEXTENDED" onclick="startMode('EXTENDED')">▶ EXTENDED</button>
         <div class="mode-lbl">+ full speech</div>
+      </div>
+      <div class="mode-wrap">
+        <button class="mode-btn" id="modeFIELD" onclick="startMode('FIELD')">▶ FIELD</button>
+        <div class="mode-lbl">Back camera · examiner</div>
       </div>
       <div class="mode-wrap">
         <button class="mode-btn" onclick="switchCamera()">🔄 Camera</button>
@@ -354,6 +358,11 @@ body{font-family:var(--f);background:#000;-webkit-font-smoothing:antialiased}
     </div>
     <video id="webcam" autoplay playsinline muted style="display:none"></video>
     <canvas id="meshCanvas" style="display:none"></canvas>
+    <!-- FIELD examiner framing guide (back camera) — center the patient's face; turns green when locked -->
+    <div id="fieldGuide" style="display:none;position:absolute;inset:0;z-index:7;pointer-events:none">
+      <div id="fieldOval" style="position:absolute;left:50%;top:48%;transform:translate(-50%,-50%);width:62%;height:74%;border:4px dashed rgba(255,255,255,0.85);border-radius:50%;box-shadow:0 0 0 2000px rgba(0,0,0,0.28);transition:border-color .2s"></div>
+      <div id="fieldLock" style="position:absolute;left:50%;bottom:14px;transform:translateX(-50%);background:rgba(0,0,0,0.6);color:#fff;font:600 13px system-ui;padding:7px 14px;border-radius:999px;white-space:nowrap">◎ Center the patient's face</div>
+    </div>
   </div>
 
   <!-- CN PROMPT - slim strip, never covers face -->
@@ -548,7 +557,18 @@ var STEP={
   okn:     {id:'okn',   type:'okn',   emoji:'🦓', name:'Moving Stripes', bannerSub:'Watch the stripes',          title:'Watch the moving stripes — let your eyes follow them', sub:'Optokinetic nystagmus (OKN)', dur:12000},
   hints:   {id:'hints', type:'hints', emoji:'🌀', name:'Vestibular',     bannerSub:'Stare at the dot, hold still', title:'Stare at the center dot and hold completely still',   sub:'HINTS — nystagmus + skew',    dur:7000, showDot:false},
   rt:      {id:'rt',    type:'rt',    emoji:'⏱️', name:'Reaction Time',  bannerSub:'Tap when the dot turns green', title:'Tap the screen the instant the dot turns GREEN',      sub:'Reaction time',               dur:16000},
-  plr:     {id:'plr',   type:'plr',   emoji:'💡', name:'Pupil Response', bannerSub:'Look at the screen — it will flash', title:'Keep your eyes open — the screen will flash briefly', sub:'Pupil light reflex (beta)',   dur:4000}
+  plr:     {id:'plr',   type:'plr',   emoji:'💡', name:'Pupil Response', bannerSub:'Look at the screen — it will flash', title:'Keep your eyes open — the screen will flash briefly', sub:'Pupil light reflex (beta)',   dur:4000},
+  // ── FIELD (examiner holds the phone, back camera faces the patient). Titles are read ALOUD to the
+  // patient. Reused-scorer steps keep their domain id (perclos/cn7/tongue/speech); the commanded
+  // gaze steps use new ids + the new 'cmdgaze' type. No existing step/scorer is modified.
+  fStraight:{id:'perclos', type:'hold',    emoji:'👁️', name:'Look Straight', bannerSub:'Read aloud to patient', title:'“Look straight at the camera”',                         sub:'Baseline · alertness (PERCLOS)',  dur:5000, showDot:false},
+  fGazeL:   {id:'gazeL',   type:'cmdgaze', axis:'h', emoji:'⬅️', name:'Gaze Left',  bannerSub:'Read aloud to patient', title:'“Look all the way LEFT… hold it”',                      sub:'Horizontal gaze — left',          dur:5000},
+  fGazeR:   {id:'gazeR',   type:'cmdgaze', axis:'h', emoji:'➡️', name:'Gaze Right', bannerSub:'Read aloud to patient', title:'“Now all the way RIGHT… hold it”',                      sub:'Horizontal gaze — right · nystagmus', dur:5000},
+  fGazeU:   {id:'gazeU',   type:'cmdgaze', axis:'v', emoji:'⬆️', name:'Gaze Up',    bannerSub:'Read aloud to patient', title:'“Look UP… hold it”',                                   sub:'Vertical gaze — up',              dur:3000},
+  fGazeD:   {id:'gazeD',   type:'cmdgaze', axis:'v', emoji:'⬇️', name:'Gaze Down',  bannerSub:'Read aloud to patient', title:'“Now look DOWN… hold it”',                              sub:'Vertical gaze — down',            dur:3000},
+  fCn7:     {id:'cn7',     type:'hold',    emoji:'😀', name:'Smile & Brows', bannerSub:'Read aloud to patient', title:'“Give me a BIG smile — then raise your EYEBROWS”',       sub:'Facial symmetry (CN VII)',        dur:5000},
+  fTongue:  {id:'tongue',  type:'hold',    emoji:'👅', name:'Tongue / Jaw', bannerSub:'Read aloud to patient', title:'“Stick your tongue out — then open your mouth wide”',    sub:'Tongue (CN XII) / jaw (CN V)',    dur:5000},
+  fSpeech:  {id:'speech',  type:'speech',  speechId:'field', emoji:'🗣️', name:'Speech', bannerSub:'Read aloud to patient', title:'“Repeat after me: The sky is blue in Montana”',     sub:'Speech / dysarthria'}
 };
 function seq(){
   var ids=[].slice.call(arguments);
@@ -564,12 +584,26 @@ function seq(){
 var TRIAGE_STEPS   = seq('calib','perclos','pursuit','saccades','cn7','tongue','head');
 var ACUTE_STEPS    = seq('calib','perclos','pursuit','saccades','antisac','npc','cn7','tongue','head','ddk');
 var EXTENDED_STEPS = seq('calib','perclos','pursuit','saccades','antisac','npc','okn','hints','plr','cn7','cn5','cn910','tongue','cn11','head','rt','spBase','spArtic','ddk','spNat');
-var MODE_STEPS     = {TRIAGE:TRIAGE_STEPS, ACUTE:ACUTE_STEPS, EXTENDED:EXTENDED_STEPS};
+var FIELD_STEPS    = seq('calib','fStraight','fGazeL','fGazeR','fGazeU','fGazeD','fCn7','fTongue','fSpeech');
+var MODE_STEPS     = {TRIAGE:TRIAGE_STEPS, ACUTE:ACUTE_STEPS, EXTENDED:EXTENDED_STEPS, FIELD:FIELD_STEPS};
 var lastMode='TRIAGE';
 function highlightMode(mode){
-  ['TRIAGE','ACUTE','EXTENDED'].forEach(function(m){
+  ['TRIAGE','ACUTE','EXTENDED','FIELD'].forEach(function(m){
     var b=document.getElementById('mode'+m); if(b)b.className='mode-btn'+(m===mode?' on':'');
   });
+}
+// Mode launcher — selects the correct camera for the mode, then runs it. FIELD uses the back camera
+// (examiner faces the patient); all other modes use the front camera. Existing modes behave exactly
+// as before when already on the front camera (no switch → straight to startExam).
+function startMode(mode){
+  if(examRunning)return;
+  var needFace = (mode==='FIELD') ? 'environment' : 'user';
+  lastMode=mode; highlightMode(mode); showFieldGuide(mode==='FIELD');
+  if(facingMode!==needFace){
+    facingMode=needFace; setVideoMirror();
+    if(cameraActive){ initCamera(); return; }   // re-acquire on the right lens → initCamera tail runs startExam(lastMode)
+  }
+  if(cameraActive) startExam(mode);
 }
 
 // ── ASSESSMENT DATA ──
@@ -788,7 +822,9 @@ function coverMap(p){
   var s=Math.max(cw/vw, ch/vh);
   var dw=vw*s, dh=vh*s, ox=(cw-dw)/2, oy=(ch-dh)/2;
   var x=p.x*dw+ox, y=p.y*dh+oy;
-  return {x: cw-x, y: y};   // mirror x to match CSS-mirrored #webcam (front camera)
+  // Front camera is CSS-mirrored (selfie) → mirror the mesh x to match (cw-x). Back camera (FIELD) is
+  // shown un-mirrored (natural examiner view) → no mirror. Display-only; scorers read raw landmarks.
+  return {x: (facingMode==='environment'? x : (cw-x)), y: y};
 }
 
 function camMsg(err){
@@ -892,9 +928,28 @@ async function initCamera(){
   startExam();
 }
 
+function setVideoMirror(){   // front = selfie-mirrored; back (FIELD) = natural, un-mirrored. Display only.
+  var v=document.getElementById('webcam');
+  if(v) v.style.transform = (facingMode==='environment') ? 'none' : 'scaleX(-1)';
+}
 function switchCamera(){
   facingMode=facingMode==='user'?'environment':'user';
+  setVideoMirror();
   if(cameraActive)initCamera();
+}
+// FIELD examiner framing guide — shows a face oval that turns green when a face is currently detected.
+// Polls the latest detection result (read-only); does not touch the render loop or capture.
+var _fieldLockTimer=null;
+function showFieldGuide(on){
+  var g=document.getElementById('fieldGuide'); if(!g)return;
+  g.style.display=on?'block':'none';
+  if(_fieldLockTimer){ clearInterval(_fieldLockTimer); _fieldLockTimer=null; }
+  if(on){ _fieldLockTimer=setInterval(function(){
+    var lr=window.lastResults, locked=!!(lr&&lr.faceLandmarks&&lr.faceLandmarks.length>0);
+    var oval=document.getElementById('fieldOval'), lock=document.getElementById('fieldLock');
+    if(oval)oval.style.borderColor=locked?'#16a34a':'rgba(255,255,255,0.85)';
+    if(lock){ lock.textContent=locked?'✓ FACE LOCKED':'◎ Center the patient’s face'; lock.style.background=locked?'rgba(22,163,74,0.9)':'rgba(0,0,0,0.6)'; }
+  },200); }
 }
 
 // ── GEOMETRY HELPERS ──
@@ -965,6 +1020,16 @@ var SPEECH_TESTS=[
     label:'Natural Speech',
     desc:'Relaxed speech — reveals subtle dysarthria',
     emoji:'🎵'
+  },
+  {
+    id:'field',
+    display:'"The sky is blue in Montana."',
+    phrase:'the sky is blue in montana',
+    words:6,
+    speak:'The sky is blue in Montana.',
+    label:'Field Speech',
+    desc:'Short command phrase — clarity / dysarthria screen',
+    emoji:'🗣️'
   }
 ];
 var SPEECH_PHRASE='the sky is blue and the grass is green';
@@ -1899,6 +1964,7 @@ function resetExam(){
   if(attDotEl)attDotEl.style.display='none';
   if(typeof oknEl!=='undefined' && oknEl)oknEl.style.display='none';   // opaque full-screen — would freeze the view
   if(typeof plrEl!=='undefined' && plrEl)plrEl.style.display='none';
+  if(lastMode!=='FIELD')showFieldGuide(false);   // keep the guide for a FIELD re-run; hide otherwise
   try{ if(window.speechSynthesis)window.speechSynthesis.cancel(); }catch(e){}
   hideResults();
   document.getElementById('alertBox').style.display='none';
@@ -2524,6 +2590,37 @@ function scoreSaccade(frames){
   var label=!moved?'Minimal eye movement':ch>=0.4?'Saccades tracked':ch>=0.2?'Saccades partially tracked':'Saccades poorly tracked';
   return{score:s, value:Math.round(ch*100), label:label, flag:flag, metric:'eye–target sync '+Math.round(ch*100)+'%'};
 }
+// ── FIELD commanded gaze (examiner says "look left/right/up/down — hold"). Reuses the existing ATT
+// gaze-capture path (no dot shown). Measures peak excursion (range of motion) + end-gaze oscillation
+// (nystagmus). New code only — no existing capture/scorer touched. Soft domain (caps at WATCH).
+async function fieldGazeStep(step){
+  document.getElementById('cnEmoji').textContent=step.emoji;
+  document.getElementById('cnPromptTitle').textContent=step.title;
+  document.getElementById('cnPromptSub').textContent=step.sub;
+  setStatus(step.name, step.bannerSub);
+  await speakAndWait(step.title); await w(250);
+  var fill=document.getElementById('cnProgressFill'); if(fill){ fill.style.transition='none'; fill.style.width='0%'; void fill.offsetWidth; fill.style.transition='width '+step.dur+'ms linear'; setTimeout(function(){fill.style.width='100%';},30); }
+  ATT.active=true; ATT.frames=[];          // existing gaze capture; no dot displayed
+  await w(step.dur);
+  ATT.active=false;
+  var fr=ATT.frames.slice();
+  DIAG[step.id+'_frames']=fr.length; if(fr.length>=6)TRIAGE.stepsComplete++;
+  TRIAGE.capturedFrames+=fr.length; TRIAGE.expectedFrames+=Math.round(step.dur/33.3);
+  return fr;
+}
+function scoreCmdGaze(frames, axis){
+  var key=(axis==='v')?'gy':'gx';
+  var g=frames.map(function(f){return f[key];}).filter(function(x){return typeof x==='number'&&isFinite(x);});
+  if(g.length<6) return {score:0,label:'No data',flag:'warn',metric:'eyes not tracked'};
+  var dev=Math.max.apply(null,g.map(function(x){return Math.abs(x);}));   // peak excursion from straight-ahead
+  var late=g.slice(Math.floor(g.length*0.4));                            // sustained eccentric gaze
+  var nys=stdDev(late);                                                  // oscillation → nystagmus proxy
+  var moved=dev>0.02;
+  var flag=!moved?'warn':(nys>0.05?'bad':'good');
+  var label=!moved?'Limited gaze excursion':(nys>0.05?'Gaze instability / nystagmus':'Full, steady gaze');
+  var score=!moved?0.4:(nys>0.05?0.4:0.9);
+  return {score:score, value:Math.round(dev*1000)/1000, label:label, flag:flag, metric:'excursion '+dev.toFixed(3)+' · nystagmus SD '+nys.toFixed(3)};
+}
 // Antisaccade — patient must look AWAY from the dot; looking TOWARD it is an error (error rate is the
 // #1 mTBI oculomotor marker, ref §1.2: >30% flag). Needs calibration to judge direction reliably.
 function scoreAntisaccade(frames){
@@ -2750,6 +2847,7 @@ function consolidateSpeech(acc){
 async function startExam(mode){
   if(examRunning||!cameraActive)return;
   mode=mode||lastMode||'TRIAGE'; lastMode=mode; highlightMode(mode);
+  showFieldGuide(mode==='FIELD');           // examiner framing oval (back camera) only in FIELD
   var STEPS=MODE_STEPS[mode]||TRIAGE_STEPS;
   examRunning=true;
   TRIAGE.active=true; TRIAGE.result=null;
@@ -2820,6 +2918,7 @@ async function startExam(mode){
     else if(st.type==='okn'){ R[st.id]=scoreOKN(await oknStep(st)); }
     else if(st.type==='rt'){ R[st.id]=scoreRT(await rtStep(st)); }
     else if(st.type==='plr'){ R[st.id]=scorePLR(await plrStep(st)); }
+    else if(st.type==='cmdgaze'){ R[st.id]=scoreCmdGaze(await fieldGazeStep(st), st.axis); }
     else if(st.type==='speech'){ try{ SPEECHACC.push(await speechStep(st)); }catch(e){ SPEECHACC.push({id:st.speechId,label:st.name,res:{error:'speech error',score:0,label:'No response',flag:'warn'}}); if(TRIAGE.active)diagError('speech: '+(e&&e.message)); } }
     else { var fr=await triageStep(st); var fn=HOLD[st.id]; if(fn)R[st.id]=fn(fr); }
   }
@@ -2891,6 +2990,10 @@ function showResults(){
     hints:{e:'🌀',n:'Vestibular (HINTS)'},
     plr:{e:'💡',n:'Pupil Light Reflex (beta)'},
     rt:{e:'⏱️',n:'Reaction Time'},
+    gazeL:{e:'⬅️',n:'Gaze — Left'},
+    gazeR:{e:'➡️',n:'Gaze — Right'},
+    gazeU:{e:'⬆️',n:'Gaze — Up'},
+    gazeD:{e:'⬇️',n:'Gaze — Down'},
     cn7:{e:'😀',n:'Facial Symmetry (CN VII)'},
     cn5:{e:'😮',n:'Jaw Motor (CN V)'},
     cn910:{e:'🗣️',n:'Palate / Voice (CN IX–X)'},
