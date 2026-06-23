@@ -25,7 +25,7 @@
   --safe-b:env(safe-area-inset-bottom,0px);
   --safe-t:env(safe-area-inset-top,0px);
 }
-html,body{height:100%;}
+html,body{height:100%;overscroll-behavior:none;}   /* no native pull-to-refresh / scroll-chaining reset */
 body{font-family:var(--f);background:#000;-webkit-font-smoothing:antialiased}
 
 @keyframes pulse{0%,100%{opacity:1}50%{opacity:.3}}
@@ -220,7 +220,7 @@ body{font-family:var(--f);background:#000;-webkit-font-smoothing:antialiased}
 /* ── RESULTS SCREEN ── */
 .results{position:fixed;inset:0;z-index:80;background:linear-gradient(160deg,#F2F5F9,#E8EDF4);display:flex;flex-direction:column;transform:translateY(100%);transition:transform .45s cubic-bezier(.22,1,.36,1);padding-top:var(--safe-t)}
 .results.show{transform:translateY(0)}
-.results-scroll{flex:1;overflow-y:auto;-webkit-overflow-scrolling:touch;padding:20px 18px calc(28px + var(--safe-b))}
+.results-scroll{flex:1;overflow-y:auto;overscroll-behavior:contain;-webkit-overflow-scrolling:touch;padding:20px 18px calc(28px + var(--safe-b))}
 .res-head{display:flex;align-items:center;justify-content:space-between;margin-bottom:16px}
 .res-head-title{font-family:'Playfair Display',serif;font-size:20px;font-weight:700;color:#0A1E38}
 .res-close{width:34px;height:34px;border-radius:50%;border:1px solid #E2E8F0;background:#fff;font-size:20px;color:#4A5B73;cursor:pointer}
@@ -640,7 +640,10 @@ var CNT=[
   window.addEventListener('touchend',function(e){
     var dy=e.changedTouches[0].clientY-sY;
     var sheetOpen=document.getElementById('sheet')&&document.getElementById('sheet').style.display!=='none';
-    if(dy>150&&!sheetOpen)window.location.reload();
+    var resOpen=document.getElementById('results')&&document.getElementById('results').classList.contains('show');
+    // Only a deliberate pull that STARTED at the very top reloads — and never while results/sheet are
+    // open. (Previously any >150px downward swipe reloaded, so scrolling up in results reset the page.)
+    if(dy>150 && sY<90 && !sheetOpen && !resOpen) window.location.reload();
   },{passive:true,capture:true});
 })();
 
