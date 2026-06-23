@@ -2431,10 +2431,10 @@ function computeTriageOverall(R){
     txt='Screening could not be completed — no usable data was captured. Check the camera, lighting, and connection, then run again.';
     speak='Screening could not be completed. No usable data was captured.';
   }
-  else if(robustBad>=1){status='URGENT';label='URGENT';cls='s-urgent';icon='🚑';txt='A red-flag domain fired on screening. Prompt clinical evaluation is recommended.';speak='A red flag fired. Prompt clinical evaluation is recommended.';}
-  else if(robustWarn>=2){status='FLAG';label='FLAG';cls='s-flag';icon='🚩';txt='Two or more domains were borderline. Clinical correlation is advised.';speak='Two or more findings were borderline. Clinical correlation is advised.';}
-  else if(robustWarn===1||oculoFlag>=1){status='WATCH';label='WATCH';cls='s-watch';icon='👁️';txt='One borderline finding. Consider monitoring or re-screening.';speak='One borderline finding. Consider monitoring or re-screening.';}
-  else{status='NORMAL';label='NORMAL';cls='s-normal';icon='✅';txt='No significant findings on this zero-hardware screen.';speak='No significant findings on this screen.';}
+  else if(robustBad>=1){status='URGENT';label='URGENT';cls='s-urgent';icon='🚑';txt='Next step: seek prompt in-person medical evaluation.';speak='A red flag was detected. Seek prompt medical evaluation.';}
+  else if(robustWarn>=2){status='FLAG';label='FLAG';cls='s-flag';icon='🚩';txt='Next step: clinical evaluation recommended — review the flagged items below.';speak='Multiple findings were flagged. Clinical evaluation is recommended.';}
+  else if(robustWarn===1||oculoFlag>=1){status='WATCH';label='WATCH';cls='s-watch';icon='👁️';txt='Next step: correlate the flagged item with the patient’s symptoms and clinical context.';speak='One borderline finding. Correlate with the patient’s symptoms.';}
+  else{status='NORMAL';label='NORMAL';cls='s-normal';icon='✅';txt='No significant findings on this screen.';speak='No significant findings on this screen.';}
   var cc=computeConfidence(R);
   return{status:status,label:label,cls:cls,icon:icon,txt:txt,speak:speak,
     confidence:cc.confidence,
@@ -2545,8 +2545,8 @@ function runDotTask(mode,durMs){
         x=0.5; y=topFrac+span*((el/2500)%1);   // far(top) → near(bottom), repeating ~2.5s (convergence proxy)
       }else if(mode==='fix'){
         x=0.5; y=midY;                          // static center target — fixation (HINTS nystagmus/skew)
-      }else{ // saccade / antisaccade — CONTINUOUS smooth horizontal bounce (no teleport), a bit quicker (~3.2s)
-        x=0.5+0.44*Math.sin(el/1600*Math.PI); y=midY;
+      }else{ // saccade / antisaccade — POP between the two screen edges (a real saccade target), ~1.1s each
+        x=(Math.floor(el/1100)%2)?0.92:0.08; y=midY;
       }
       ATT.dotX=x; ATT.dotY=y; moveAttDot(x,y);
       requestAnimationFrame(tick);
@@ -2983,26 +2983,6 @@ function showResults(){
   var r=TRIAGE.result; if(!r)return;
   showFieldGuide(false);   // exam over → don't let the FIELD framing oval linger over the results/idle view
   var o=r.overall, d=r.domains;
-  function domCard(emoji,name,dom){
-    var fl=dom.flag==='good'?'flag-good':dom.flag==='warn'?'flag-warn':'flag-bad';
-    var ft=dom.flag==='good'?'OK':dom.flag==='warn'?'WATCH':'FLAG';
-    return '<div class="res-dom"><div class="res-dom-emoji">'+emoji+'</div>'
-      +'<div class="res-dom-main"><div class="res-dom-name">'+name+'</div>'
-      +'<div class="res-dom-metric">'+dom.label+' · '+dom.metric+'</div></div>'
-      +'<div class="res-dom-flag '+fl+'">'+ft+'</div></div>';
-  }
-  var h='';
-  h+='<div class="res-head"><div class="res-head-title">'+(r.mode||'TRIAGE')+' Results</div><button class="res-close" onclick="hideResults()">×</button></div>';
-  h+='<div class="res-status '+o.cls+'"><div class="res-status-icon">'+o.icon+'</div>'
-    +'<div class="res-status-label">'+o.label+'</div>'
-    +'<div class="res-status-txt">'+o.txt+'</div>'
-    +'<div class="res-conf">◉ Confidence '+o.confidence+'%</div></div>';
-  if(r.prev){
-    var pd=''; try{ pd=new Date(r.prev.created_at).toLocaleString(); }catch(e){ pd=r.prev.created_at||''; }
-    h+='<div style="background:#fff;border:1px solid #E2E8F0;border-radius:12px;padding:11px 14px;margin-bottom:14px;font-size:12px;color:#4A5B73">'
-      +'<b style="color:#0A1E38">Longitudinal</b> <span style="opacity:.6">· beta</span><br>Previous '+(r.mode||'TRIAGE')
-      +' screen: <b>'+esc(r.prev.overall_result||'—')+'</b> · '+(r.prev.confidence!=null?r.prev.confidence+'%':'—')+' · '+esc(pd)+'</div>';
-  }
   var DOM_META={
     perclos:{e:'👁️',n:'Alertness (PERCLOS)'},
     pursuit:{e:'🔵',n:'Smooth Pursuit'},
@@ -3025,6 +3005,31 @@ function showResults(){
     head:{e:'🧭',n:'Head Stability'},
     speech:{e:'🗣️',n:'Speech (CN VII/X/XII)'}
   };
+  // What was flagged (domains not OK), named — shown in the result card so the next step is concrete.
+  var _flagged=Object.keys(d).filter(function(k){return k!=='calib'&&DOM_META[k]&&d[k]&&d[k].label&&d[k].flag!=='good';})
+    .map(function(k){return DOM_META[k].n+' ('+(d[k].flag==='bad'?'FLAG':'WATCH')+')';});
+  var _flagLine=_flagged.length ? ('⚑ Flagged: '+_flagged.join(', ')) : '✓ All checks within normal range';
+  function domCard(emoji,name,dom){
+    var fl=dom.flag==='good'?'flag-good':dom.flag==='warn'?'flag-warn':'flag-bad';
+    var ft=dom.flag==='good'?'OK':dom.flag==='warn'?'WATCH':'FLAG';
+    return '<div class="res-dom"><div class="res-dom-emoji">'+emoji+'</div>'
+      +'<div class="res-dom-main"><div class="res-dom-name">'+name+'</div>'
+      +'<div class="res-dom-metric">'+dom.label+' · '+dom.metric+'</div></div>'
+      +'<div class="res-dom-flag '+fl+'">'+ft+'</div></div>';
+  }
+  var h='';
+  h+='<div class="res-head"><div class="res-head-title">'+(r.mode||'TRIAGE')+' Results</div><button class="res-close" onclick="hideResults()">×</button></div>';
+  h+='<div class="res-status '+o.cls+'"><div class="res-status-icon">'+o.icon+'</div>'
+    +'<div class="res-status-label">'+o.label+'</div>'
+    +'<div class="res-status-txt" style="font-weight:700;color:#0A1E38">'+_flagLine+'</div>'
+    +'<div class="res-status-txt">'+o.txt+'</div>'
+    +'<div class="res-conf">◉ Confidence '+o.confidence+'%</div></div>';
+  if(r.prev){
+    var pd=''; try{ pd=new Date(r.prev.created_at).toLocaleString(); }catch(e){ pd=r.prev.created_at||''; }
+    h+='<div style="background:#fff;border:1px solid #E2E8F0;border-radius:12px;padding:11px 14px;margin-bottom:14px;font-size:12px;color:#4A5B73">'
+      +'<b style="color:#0A1E38">Longitudinal</b> <span style="opacity:.6">· beta</span><br>Previous '+(r.mode||'TRIAGE')
+      +' screen: <b>'+esc(r.prev.overall_result||'—')+'</b> · '+(r.prev.confidence!=null?r.prev.confidence+'%':'—')+' · '+esc(pd)+'</div>';
+  }
   var domsHtml='';
   Object.keys(d).forEach(function(k){ if(k==='calib')return; var m=DOM_META[k]; if(!m||!d[k]||!d[k].label)return; domsHtml+=domCard(m.e,m.n,d[k]); }); // skip empty save-guard placeholders
   h+='<div class="res-domains">'+domsHtml+'</div>';
