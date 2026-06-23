@@ -366,6 +366,21 @@ function renderDashboard(){
       +' &nbsp;|&nbsp; <span class="diag-k">Iris:</span> '+rv(r.avg_iris_count,1)+' &nbsp;|&nbsp; <span class="diag-k">FPS:</span> '+ri(r.min_fps)+'–'+ri(r.max_fps)
       +(r.error_log?'<div class="diag-err">⚠ '+esc(r.error_log)+'</div>':'')
       +'</td></tr>';
+    // ALL DOMAINS (from domains_json) — shows every domain regardless of mode (FIELD gaze, EXTENDED extras…)
+    var dj=r.domains_json||{};
+    var DNAMES={perclos:'Alertness',pursuit:'Pursuit',saccades:'Saccades',antisac:'Antisaccade',npc:'Convergence',okn:'OKN',hints:'HINTS',plr:'PLR',cn7:'CN VII',cn5:'CN V',cn910:'CN IX–X',tongue:'CN XII',cn11:'CN XI',head:'Head',gazeL:'Gaze L',gazeR:'Gaze R',gazeU:'Gaze U',gazeD:'Gaze D',speech:'Speech'};
+    var chips=Object.keys(dj).filter(function(k){return k!=='calib'&&dj[k]&&dj[k].label;}).map(function(k){
+      var d=dj[k], c=d.flag==='good'?'#16a34a':d.flag==='warn'?'#d97706':d.flag==='bad'?'#dc2626':'#64748b';
+      return '<span style="display:inline-block;margin:2px 8px 2px 0;padding:2px 7px;border-radius:6px;background:rgba(0,0,0,.03);border-left:3px solid '+c+'"><b>'+(DNAMES[k]||k)+':</b> '+esc(d.label||'')+(d.metric?' · '+esc(d.metric):'')+'</span>';
+    }).join('');
+    h+='<tr class="detail-row'+(broken?' brk':'')+'"'+bg+'><td colspan="13"><span class="diag-k">All domains:</span> '+(chips||'<i style="color:#94a3b8">— none (older row, no domains_json)</i>')+'</td></tr>';
+    // EXTRA DIAGNOSTICS (remaining diag_json keys: cal_*, gaze amplitudes, per-step frame counts…)
+    var di=r.diag_json||{};
+    var shownK={model_loaded:1,model_delegate:1,face_detected:1,calib_frames:1,perclos_frames:1,cn7_frames:1,tongue_frames:1,head_frames:1,avg_iris_count:1,min_fps:1,max_fps:1,errors:1,detectFrames:1,irisSum:1};
+    var extras=Object.keys(di).filter(function(k){return k.charAt(0)!=='_'&&!shownK[k];}).sort().map(function(k){
+      var v=di[k]; return '<span style="margin-right:10px"><span class="diag-k">'+k+'</span> '+(typeof v==='object'?esc(JSON.stringify(v)):esc(String(v)))+'</span>';
+    }).join('');
+    if(extras) h+='<tr class="diag-row'+(broken?' brk':'')+'"'+bg+'><td colspan="13"><span class="diag-k">diag+:</span> '+extras+'</td></tr>';
   });
   h+='</tbody></table></div></div>';
 
