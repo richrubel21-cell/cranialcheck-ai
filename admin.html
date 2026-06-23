@@ -426,7 +426,9 @@ function exportCSV(){
   preferred.forEach(function(c){ if(!seen[c] && ROWS.some(function(r){return c in r;})){seen[c]=1;cols.push(c);} });
   ROWS.forEach(function(r){ Object.keys(r).forEach(function(k){ if(!seen[k]){seen[k]=1;cols.push(k);} }); });
   function cell(v){
-    var s=String(v==null?'':v);
+    var s;
+    if(v && typeof v==='object'){ try{ s=JSON.stringify(v); }catch(e){ s=String(v); } }  // domains_json / diag_json → JSON text
+    else { s=String(v==null?'':v); }
     if(/[",\n]/.test(s))s='"'+s.replace(/"/g,'""')+'"';
     return s;
   }
