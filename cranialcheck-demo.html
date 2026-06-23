@@ -601,11 +601,12 @@ function startMode(mode){
   if(examRunning)return;
   var needFace = (mode==='FIELD') ? 'environment' : 'user';
   lastMode=mode; highlightMode(mode); showFieldGuide(mode==='FIELD');
-  if(facingMode!==needFace){
-    facingMode=needFace; setVideoMirror();
-    if(cameraActive){ initCamera(); return; }   // re-acquire on the right lens → initCamera tail runs startExam(lastMode)
-  }
-  if(cameraActive) startExam(mode);
+  var switched=(facingMode!==needFace);
+  if(switched){ facingMode=needFace; setVideoMirror(); }
+  // From the start screen the camera isn't up yet, or the lens changed → (re)acquire it; initCamera's
+  // tail launches startExam(lastMode). Otherwise the camera is already live → run the exam directly.
+  if(!cameraActive || switched){ initCamera(); return; }
+  startExam(mode);
 }
 
 // ── ASSESSMENT DATA ──
@@ -2980,6 +2981,7 @@ async function startExam(mode){
 // ── RESULTS SCREEN ──
 function showResults(){
   var r=TRIAGE.result; if(!r)return;
+  showFieldGuide(false);   // exam over → don't let the FIELD framing oval linger over the results/idle view
   var o=r.overall, d=r.domains;
   function domCard(emoji,name,dom){
     var fl=dom.flag==='good'?'flag-good':dom.flag==='warn'?'flag-warn':'flag-bad';
