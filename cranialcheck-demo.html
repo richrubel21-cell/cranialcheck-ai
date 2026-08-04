@@ -688,13 +688,45 @@ function initVoice(){
 }
 initVoice();
 
+// ── iOS SAFARI VOICE UNLOCK ──
+// WebKit only grants speech permission if the FIRST speak() runs synchronously inside a user
+// gesture. Every exam prompt fires behind awaits, so on iPhone the gesture context is gone by
+// then and iOS discards all speech silently (onend never fires, so the exam just runs mute).
+// Prime the synth with an inaudible utterance on the first tap/key — this must stay synchronous
+// in the handler; any await/setTimeout before speak() forfeits the gesture and the unlock fails.
+var voiceUnlocked=false;
+function unlockVoice(){
+  if(voiceUnlocked||!window.speechSynthesis)return;
+  try{
+    var u=new SpeechSynthesisUtterance(' ');
+    u.volume=0;                      // inaudible; the gesture, not the volume, is what unlocks
+    window.speechSynthesis.speak(u);
+    voiceUnlocked=true;
+    if(!femaleVoice)initVoice();     // iOS often has an empty voice list until first speak
+  }catch(e){}
+}
+['touchend','mousedown','click','keydown'].forEach(function(ev){
+  document.addEventListener(ev,unlockVoice,true);   // capture → fires before any button handler
+});
+
+// iOS drops an utterance when speak() is called in the same tick as cancel(), and can leave the
+// synth wedged in a paused state. Desktop is unaffected, so keep its path byte-identical.
+function speakNow(u){
+  var synth=window.speechSynthesis;
+  var go=function(){
+    try{ if(synth.paused)synth.resume(); }catch(e){}
+    try{ synth.speak(u); }catch(e){}
+  };
+  if(isIOS())setTimeout(go,120); else go();
+}
+
 function speak(text){
   if(!audioEnabled||!window.speechSynthesis)return;
   window.speechSynthesis.cancel();
   var u=new SpeechSynthesisUtterance(text);
   if(femaleVoice)u.voice=femaleVoice;
   u.rate=0.9; u.pitch=1.0; u.volume=1;
-  window.speechSynthesis.speak(u);
+  speakNow(u);
 }
 
 // speakAndWait — returns a promise that resolves when speech finishes
@@ -706,7 +738,7 @@ function speakAndWait(text){
     if(femaleVoice)u.voice=femaleVoice;
     u.rate=0.9; u.pitch=1.0; u.volume=1;
     u.onerror=function(){resolve();};
-    window.speechSynthesis.speak(u);
+    speakNow(u);
     // Fallback only if onend never fires (iOS). Generous (~130ms/char at rate 0.9) so it never cuts a
     // phrase short — normal completion is handled by onend below; this just bounds the iOS no-onend case.
     var fallback=setTimeout(resolve, Math.max(4000, text.length*130));
