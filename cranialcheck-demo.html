@@ -2954,7 +2954,7 @@ async function startExam(mode){
   overall.examDurationSec=Math.round(durSec*10)/10;
   overall.avgFps=durSec>0?Math.round(TRIAGE.renderFrames/durSec):0;
   TRIAGE.result={domains:R, overall:overall, mode:mode};
-  try{ TRIAGE.result.prev=await fetchPrevExam(mode); }catch(e){}   // longitudinal (beta) — fetch BEFORE save
+  try{ TRIAGE.result.prev=await withBackendTimeout(fetchPrevExam(mode),2500); }catch(e){}   // longitudinal (beta) — fetch BEFORE save
   saveExamToSupabase(TRIAGE.result);
 
   setStatus('✓ '+mode+' Complete', overall.label+' — results ready');
@@ -2972,7 +2972,7 @@ async function startExam(mode){
     var ovc; try{ ovc=computeTriageOverall(R||{}); }catch(e){ ovc={status:'ERROR',label:'Exam error',confidence:0,speak:'An error occurred.'}; }
     ovc.examDurationSec=Math.round((performance.now()-TRIAGE.startMs)/100)/10; ovc.avgFps=0;
     TRIAGE.result={domains:R||{}, overall:ovc, mode:mode, crashed:true};
-    try{ await saveExamToSupabase(TRIAGE.result); }catch(e){}
+    try{ await withBackendTimeout(saveExamToSupabase(TRIAGE.result),2500); }catch(e){}
     try{ setStatus('Exam error','A problem occurred — diagnostics saved. Please reload.'); document.getElementById('statusBanner').className='status-banner'; }catch(e){}
     try{ showResults(); }catch(e){}
   }
@@ -3072,6 +3072,16 @@ function exportReport(){
 
 function esc(s){return String(s==null?'':s).replace(/[&<>"]/g,function(c){return({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'})[c];});}
 // Longitudinal (beta): most recent prior exam of the same mode (fetched before the current save).
+// No backend call may stall the exam. Races a Supabase promise against a short timeout and
+// resolves null on expiry, so a dead or slow project can never delay the results screen.
+// (The project was deleted — DNS fails instantly today, but carrier DNS can hijack NXDOMAIN
+// to a parking page and hang on TLS instead, which is the case this guards.)
+function withBackendTimeout(p, ms){
+  return Promise.race([
+    Promise.resolve(p).catch(function(){ return null; }),
+    new Promise(function(res){ setTimeout(function(){ res(null); }, ms||2500); })
+  ]);
+}
 async function fetchPrevExam(mode){
   if(!sb)return null;
   try{
