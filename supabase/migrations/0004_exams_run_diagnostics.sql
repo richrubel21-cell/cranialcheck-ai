@@ -1,9 +1,12 @@
--- 0003 — per-run diagnostics
--- Matches commit 7146e8b (2026-06-21 09:54) "capture run diagnostics to Supabase + surface in admin".
+-- 0004 — per-run diagnostics columns
 --
--- RECONSTRUCTED, not verified against original. Names verbatim from the insert payload; types
--- inferred from the DIAG object in cranialcheck-demo.html (booleans, delegate string, integer
--- frame counters, nullable fps numbers, joined error string).
+-- RECONSTRUCTED, not verified against original — MISSING from RECOVERED_MIGRATIONS.sql.
+-- Commit 7146e8b (2026-06-21 09:54) started sending these 13 fields and admin.html reads them.
+-- They must have existed live: f34b57c verified inserts returning 201, and PostgREST rejects any
+-- insert that names an unknown column (resilientInsert only retries without diag_json). Without
+-- this file every save fails on a restored project.
+-- Names verbatim from the insert payload; types inferred from the DIAG object. Its position
+-- relative to 0003 is unknown (harmless: both are additive).
 
 alter table public.exams
   add column if not exists model_loaded     boolean,
